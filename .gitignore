@@ -1,0 +1,13 @@
+# Binaries
+meeting-notes-cli
+*.exe
+*.out
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+
+# Go specific
+*.test
