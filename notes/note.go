@@ -1,7 +1,7 @@
 package note
 
 import (
-	"encoding/json"
+
 	"time"
 )
 
