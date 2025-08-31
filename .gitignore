@@ -11,3 +11,18 @@ meeting-notes-cli
 
 # Go specific
 *.test
+
+
+feat: (features)
+
+fix: (bug fixes)
+
+docs: (documentation only)
+
+style: (formatting, no logic)
+
+refactor: (code improvement)
+
+test: (tests only)
+
+chore: (maintenance/setup)
