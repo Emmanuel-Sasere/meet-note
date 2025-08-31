@@ -50,7 +50,7 @@ func AddNotes(text string) error {
 	return SaveNotes(notes)
 }
 
-func deleteNote(index int) error {
+func DeleteNote(index int) error {
 	notes, err := LoadNotes()
 	if err != nil {
 		return err
