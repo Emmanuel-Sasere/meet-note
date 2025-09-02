@@ -22,7 +22,7 @@ func main () {
 		}
 
 		note := os.Args[2]
-		err := AddNotes(note)
+		err := AddNote(note)
 		if err != nil {
 			f.Println ("Error adding note: %w", err)
 		}else{
@@ -42,7 +42,7 @@ func main () {
 
 		f.Println("Notes:")
 		for i, n := range notes {
-			f.Println("%d. %s\n", i+1, n.Text)
+			f.Printf("%d. %s\n", i+1, n.Text)
 		}
 
 	case "delete":

@@ -41,7 +41,7 @@ func LoadNotes() ([]Note, error) {
 	return notes, nil
 }
 
-func AddNotes(text string) error {
+func AddNote(text string) error {
 	notes, err := LoadNotes()
 	if err != nil {
 		return err
@@ -56,8 +56,8 @@ func DeleteNote(index int) error {
 		return err
 	}
 	if index < 0 || index>= len(notes) {
-		return f.Errorf("invalid note index:")
+		return f.Errorf("invalid note index")
 	}
-	notes = append(notes[:index], notes[index+1:] ...)
+	notes = append(notes[:index], notes[index+1:]...)
 	return SaveNotes(notes)
 }
