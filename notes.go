@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	f "fmt"
 	"os"
+	"time"
+	"strconv"
+	"strings"
 )
 
 
@@ -11,8 +14,14 @@ import (
 
 
 type Note struct {
-	Text string  `json:"text"`
+	ID int  						`json:"id"`
+	Content string 			`json:"content"`
+	Meeting string 			`json:"meeting"`
+	CreatedAt time.Time `json:"created_at"`
+
 }
+
+const notesfile = "notes.json"
 
 
 func SaveNotes(notes []Note) error {
@@ -20,11 +29,11 @@ func SaveNotes(notes []Note) error {
 	if err != nil {
 		f.Println("fail to marshal notes: %w", err)
 	}
-	return os.WriteFile("notes.json", data, 0644)
+	return os.WriteFile(notesfile, data, 0644)
 }
 
 func LoadNotes() ([]Note, error) {
-	data, err := os.ReadFile("notes.json")
+	data, err := os.ReadFile(notesfile)
 
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -38,26 +47,90 @@ func LoadNotes() ([]Note, error) {
 		f.Println("fail to unmarshal notes: %w", err)
 		
 	}
-	return notes, nil
+	return notes, err
 }
+
+
 
 func AddNote(text string) error {
 	notes, err := LoadNotes()
 	if err != nil {
 		return err
 	}
-	notes = append(notes, Note{Text: text})
+	newNote := Note{
+		ID: 		len(notes) + 1,
+		Content: content,
+		Meeting: meeting,
+		CreatedAt: time.Now(),
+	}
+	notes = append(notes, newNote)
 	return SaveNotes(notes)
 }
 
-func DeleteNote(index int) error {
+func ListNotes() error {
 	notes, err := LoadNotes()
 	if err != nil {
 		return err
 	}
-	if index < 0 || index>= len(notes) {
-		return f.Errorf("invalid note index")
+	if len(notes) == 0 {
+		f.Println("No notes found.")
+		return nil
 	}
-	notes = append(notes[:index], notes[index+1:]...)
+	for _, note := range notes {
+		f.Printf("[%d] %s | Meeting: %s | Created At: %s/n", note.ID, note.Content, note.Meeting, note.CreatedAt.Format("2006-01-02 15:04"))
+	}
+	return nil
+}
+
+func DeleteNote(idStr string) error {
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		return f.Errorf("invalid ID")
+	}
+	notes, err := LoadNotes()
+	if err != nil {
+		return err
+	}
+	newNotes := []Note{}
+	for _, n := range notes {
+		if n.ID != id {
+			newNotes =append(newNotes, n)
+		}
+	}
 	return SaveNotes(notes)
+}
+
+
+func SearchNotes(keyword string) error {
+	notes, err := LoadNotes()
+	if err != nil {
+		return err
+	}
+	found := false
+	for _, n := range notes {
+		if strings.Contains(strings.ToLower(n.Content), strings.ToLower(keyword)) || strings.Contains(strings.ToLower(n.Meeting), strings.ToLower(keyword)) {
+			f.Printf("[%d] %s | Meeting: %s | Created At: %s\n", n.ID, n.Content, n.CreatedAt.Format("2006-01-02 15:04"))
+			found = true
+		}
+	}
+	if !found {
+		f.Println("No matching notes found.")
+	}
+	return nil
+}
+
+
+
+func ExportNotes(meeting, format string) error {
+	notes, err := LoadNotes()
+	if err != nil {
+		return err
+	}
+	var exported []Note
+	for _, n := range notes {
+		if strings.EqualFold(n.Meeting, meeting) {
+			exported = append(exported, n)
+		}
+	}
+	
 }
