@@ -152,7 +152,7 @@ func handleSearch(){
 	}
 
 	if len(notes)  == 0 {
-		f.Println("No matching notes found containing '%s'\n", searchTerm)
+		f.Printf("No matching notes found containing '%s'\n", searchTerm)
 		return
 	}
 
@@ -255,16 +255,16 @@ func showHelp() {
 	f.Println()
 
 	f.Println("   delete <note-id>")
-	f.Println("   		Delete a specific note by its ID")
+	f.Println("			Delete a specific note by its ID")
 	f.Println()
 	f.Println("  search <keyword>")
-	f.Println("				Search for notes containing the keyword")
+	f.Println("			Search for notes containing the keyword")
 	f.Println()
 	f.Println("  export <format> <filename> [--category=<name>]")
-	f.Println("				Export notes to file (formats: txt, md)")
+	f.Println("			Export notes to file (formats: txt, md)")
 	f.Println()
 	f.Println("  categories")
-	f.Println("				List all available categories")
+	f.Println("			List all available categories")
 	f.Println()
 
 
