@@ -1,0 +1,62 @@
+{
+ "notes": [
+  {
+   "id": "note_1758005334",
+   "text": "Finalized client requirements for feature X",
+   "timestamp": "2025-09-16T07:48:54.273665+01:00",
+   "category": "",
+   "tags": null
+  },
+  {
+   "id": "note_1758005371",
+   "text": "Talked about career growth and training opportunities",
+   "timestamp": "2025-09-16T07:49:31.605089+01:00",
+   "category": "",
+   "tags": null
+  },
+  {
+   "id": "note_1758170419",
+   "text": "Reviewed client feedback on UI design, scheduled follow-up for next week",
+   "timestamp": "2025-09-18T05:40:19.268258+01:00",
+   "category": "client-meeting",
+   "tags": [
+    "feedback",
+    "ui",
+    "design"
+   ]
+  },
+  {
+   "id": "note_1758171270",
+   "text": "Reviewed Q3 budget allocation",
+   "timestamp": "2025-09-18T05:54:30.910549+01:00",
+   "category": "finance",
+   "tags": [
+    "budget",
+    "review",
+    "important"
+   ]
+  },
+  {
+   "id": "note_1758171294",
+   "text": "Discussed Q1 goals and updated progress on backend API",
+   "timestamp": "2025-09-18T05:54:54.057697+01:00",
+   "category": "team-standup",
+   "tags": [
+    "goals",
+    "backend",
+    "progress"
+   ]
+  },
+  {
+   "id": "note_1758171957",
+   "text": "Updated progress on backend API deployment",
+   "timestamp": "2025-09-18T06:05:57.019285+01:00",
+   "category": "team-standup",
+   "tags": [
+    "backend",
+    "progress",
+    "devops"
+   ]
+  }
+ ]
+}

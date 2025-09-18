@@ -1,0 +1,18 @@
+All Notes
+Exported on: 2025-09-18 05:49:06
+==================================================
+
+1. [2025-09-16 07:48] 
+  Finalized client requirements for feature X
+
+2. [2025-09-16 07:49] 
+  Talked about career growth and training opportunities
+
+3. [2025-09-18 05:40] client-meeting
+  Reviewed client feedback on UI design, scheduled follow-up for next week
+   Tags: feedback,ui,design
+
+4. [2025-09-18 05:47] marketing
+  Planned marketing campaign for product launch
+   Tags: launch,priority,teamwork
+

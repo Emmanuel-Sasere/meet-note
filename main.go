@@ -107,8 +107,8 @@ func handleList() {
 	}
 	f.Printf("Found %d note(s):\n\n", len(notes))
 	for i, note := range notes {
-		f.Printf("%d. [%s] %s/n", i+1, note.Timestamp.Format("2006-01-02 15:04"), note.Category)
-		f.Printf("  ID: %s\n, note.ID")
+		f.Printf("%d. [%s] %s\n", i+1, note.Timestamp.Format("2006-01-02 15:04"), note.Category)
+		f.Printf("  ID: %s\n", note.ID)
 		f.Printf("  %s\n", note.Text)
 
 		if len(note.Tags) > 0 {
@@ -152,7 +152,7 @@ func handleSearch(){
 	}
 
 	if len(notes)  == 0 {
-		f.Println("No matching notes found containing '%s'\n", searchTerm)
+		f.Printf("No matching notes found containing '%s'\n", searchTerm)
 		return
 	}
 
