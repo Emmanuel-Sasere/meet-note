@@ -28,4 +28,7 @@ test: (tests only)
 chore: (maintenance/setup)
 
 .vscode
-meetnote                
+meetnote       
+all_nodes.md
+all_notes.txt
+         
