@@ -35,14 +35,14 @@ type MeetingSession struct {
 	//STATISTICS
 	Duration   time.Duration `json:"duration"`
 	TotalWords   int   `json:"total_words"`
-	SegmentCount  int     `json:segment_count"`
+	SegmentCount  int     `json:"segment_count"`
 
 
 
 	//SUMMARY DATA
 	Summary  string  `json:"summary"`
-	KeyPoints   []string  `json:key_points"`
-	ActionItems  []string `json:action_items"`
+	KeyPoints   []string  `json:"key_points"`
+	ActionItems  []string `json:"action_items"`
 	Participants  []string  `json:"participants"`
 }
 
@@ -59,7 +59,7 @@ type TranscriptSegment struct {
 
 	//RECOGNITION  DATA
 	Confidence  float64  `json:"confidence"`
-	Language  string  `json:"language`
+	Language  string  `json:"language"`
 	Speaker   string   `json:"speaker"`
 
 	//PROCESSING FLAGS
@@ -125,4 +125,7 @@ type ExportFormat string
 const (
 	FormatTXT      ExportFormat = "txt"
 	FormatMarkdown ExportFormat = "md"
+	FormatTranscript ExportFormat = "transcript"
+	FormatSummary  ExportFormat = "summary"
+	FormatJSON    ExportFormat  = "json"
 )
