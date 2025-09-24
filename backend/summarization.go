@@ -79,7 +79,7 @@ func combineTranscripts(notes []Note) string{
 	}
 
 	return strings.Join(transcriptParts, "\n")
-
+}
 
 	//EXTRACT KEY POINTS
 	func extractKeyPoints(transcript string) []string{
@@ -92,7 +92,7 @@ func combineTranscripts(notes []Note) string{
 
 		importantKeywords := []string{
 			//Decision keyword
-			"decided",, "decision","conclude", "agreed", "approve",
+			"decided", "decision", "conclude", "agreed", "approve",
 			//Action Keywords
 			"will do","action","task", "responsible","deadline","by next week",
 			//Import tpics
@@ -162,7 +162,7 @@ func combineTranscripts(notes []Note) string{
 
 	//EXTRACT ACTION ITEMS
 
-	func extractAcrionItems(transcript string) []string {
+	func extractActionItems(transcript string) []string {
 		l.Println("📔 Extracting action items...")
 
 		var actionItems []string
@@ -177,12 +177,12 @@ func combineTranscripts(notes []Note) string{
 			//Deadline patterns
 			"by next week", "by friday", "deadline", "due date", "complete by",
 			//Follow-up patterns
-			"follow up", "check on","update on","report back", "circle back"
+			"follow up", "check on", "update on", "report back", "circle back"
 		}
 
 		sentences := splitIntoSentences(transcript)
 
-		for _, sentence := range sentence{
+		for _, sentence := range sentences{
 			sentence = strings.TrimSpace(sentence)
 			lowerSentence := strings.ToLower(sentnece)
 
@@ -211,7 +211,7 @@ func combineTranscripts(notes []Note) string{
 
 	//EXTRACT PARTICIPANTS
 
-	func extractParticioants(transcript string) []string{
+	func extractParticipants(transcript string) []string{
 		l.Println("👀 Extracting participants...")
 
 		var participants []string
@@ -230,7 +230,7 @@ func combineTranscripts(notes []Note) string{
 		words := strings.Fields(transcript)
 
 		for i, word := range words {
-			lowerWord := strings.Tolower(word)
+			lowerWord := strings.ToLower(word)
 
 			//Check for name patterns
 			for _, pattern := range namePatterns {
@@ -283,8 +283,7 @@ func generateTextSummary(transcript string, keyPoints []string, actionItems []st
 	wordCount := countWords(transcript)
 	summary.WriteString(f.Sprintf("This meeting contained %d words of discussion. ", wordCount))
 
-	if len(keyPoints) > 0 
-	{
+	if len(keyPoints) > 0 {
 		summary.WriteString(f.Sprintf("Key topics included: %s. ", strings.Join(keyPoints[:min(3, len(keyPoints))], ", ")))
 	}
 
@@ -342,7 +341,7 @@ func splitIntoSentences(text string) []string {
 
 //check if text contains numbers
 func containsNumbers(text string) bool {
-	re ;= regexp.Mustcomplie(`\d`)
+	re := regexp.Mustcomplie(`\d`)
 	return re.MatchString(text)
 }
 
@@ -354,4 +353,229 @@ func isCapitalized(word string) bool {
 	}
 	first := rune(word[0])
 	return first >= 'A' && first <= 'Z'
+}
+
+//Clean up sentence (remove extra whitespace , timestramp, etc)
+
+func cleanSentence(sentence string) string{
+	//Remove timestamp markers
+	re := regexp.MustCompile(`\[\d{2}:\d{2}\]\s*`)
+	sentence = re.ReplaceAllString(sentence, "")
+
+	//Remove extra whitespace
+	sentence = regexp.MustCompile(`\s+`).ReplaceAllString(sentence, " ")
+
+	//TRim and capitalize first letter
+sentence = strings.TrimSpace(sentence)
+if len(sentence) > 0 {
+	sentence = strings.ToUpper(string(sentence[0])) + sentence[1:]
+}
+
+return sentence
+}
+
+
+//Check if item is already in list (case-insensitive)
+func isDuplicate(item string, list []string) bool {
+	lowwerItem := strings.ToLower(item)
+	for _, existing := range list {
+		if strings.ToLower(existing) == lowerItem {
+			return true
+		}
+	}
+	return false
+}
+
+//Get minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a 
+	}
+	return b
+}
+
+
+//DATABASE FUNCTIONS FOR SESSIONS
+
+//Get all notes belonging to a specific session
+func getNotesBySessionID(sessionID string) ([]Note, error) {
+	//Load all notes
+	allNotes, err := GetAllNotes()
+	if err != nil {
+		return nil, err
+	}
+
+	//Filter by session ID
+	var sessionNotes []Note
+	for _, note := range allNotes {
+		if note.SessionID == sessionId {
+			sessionNotes = append(sessionNotes, note)
+		}
+	}
+
+	return sessionNotes, nil
+}
+
+//Save session to database
+func saveSessionTODB(session *MeetingSession) error {
+	//Load exiting database
+	db, err := LoadNotesDB()
+	if err != nil {
+		return err
+	}
+
+	//Check if session already exits (update) or is new (insert)
+	found := false
+	for i, existing := range db.Sessions {
+		if existing.ID == session.ID {
+			//Update existing session
+			db.Sessions[i] = *session
+			found = true
+			break
+		}
+	} 
+
+	//If not found, add new session
+	if !found{
+		db.Sessions = append(db.Sessions, *session)
+	}
+
+
+	//Save back to file
+	return SaveNotesDB(db)
+}
+
+
+//Save transcript segment to database
+func saveSegmentToDB(segment TranscriptSegment) error {
+	//Load existing database
+	db, err := LoadNotesDB()
+	if err != nil {
+		return err
+	}
+
+
+	//Add segment to database
+	db.Segments = append(db.Segments, segment)
+
+	//Add segment to database
+	db.Segments = append(db.Segments, segment)
+
+	//Save back to file
+	return SaveNotesDB(db)
+}
+
+
+
+
+
+//ADVANCED SUMMARIZATION (Future enhancement)
+
+//this function could integrate with AI service for better summaries
+func generateAIsSummary(transcript string) string {
+
+
+	wordCount := countWords(transcript)
+	if wordCount < 50 {
+		return "Short discussion with limited content."
+	}else if wordCount < 200 {
+		return "Brief meeting covering several topics with some actionable items."
+	}else {
+		return "Extended discussion with multiple topics, decisions, and follow-up items identified"
+	}
+}
+
+
+//EXPORT SESSION SUMMARY
+func exportSessionSummary(sessionID string, format ExportFormat, filename string) error {
+	//Find the session
+	db, err := LoadNotesDB()
+	if err != nil {
+		return err
+	}
+
+	var session *MeetingSession
+	for _, s := range db.Sessions {
+		if s.ID == sessionID {
+			session = &s
+			break
+		}
+	}
+
+	if session == nil {
+		return f.Errorf("session not found: %s", sessionID)
+	}
+
+	//enerate content based on format
+	var content string
+	switch format {
+	case FormatSummary:
+		content = session.Summary
+	case FormatTranscript:
+		//get full transcript with timestamps
+		notes, err := getNotesBySessionID(sessionID)
+		if err != nil {
+			return err
+		}
+
+		content = combineTranscripts(notes)
+	case FormatMarkdown:
+		content = formatSessionAsMarkdown(session)
+	default:
+		return f.Errorf("unsupported format for session export: %s", format)
+	}
+
+	//Write to file
+	return writeToFile(filename, content)
+}
+
+
+//Format session as markdown
+func formatSessionAsMaarkdown(session *MeetingSession) string {
+	var md strings.Builder
+
+md.WriteString(f.Sprintf("# %s\n\n", session.Title))
+md.WriteString(f.Sprintf("**Date:** %s\n", session.StartTime.Format("January 2, 2006")))
+md.WriteString(f.Sprintf("**Duration:** %v\n", session.Duration))
+md.WriteString(f.Sprintf("**Status:** %s\n\n", session.Status))
+
+
+if len(session.Participants) > 0 {
+	md.WriteString("## Participants\n")
+	for _, participant := range session.Participants {
+		md.WriteString(f.Sprintf("- %s\n", participant))
+	}
+	md.WriteString("\n")
+}
+
+md.WriteString("## Summary\n")
+md.WriteString(session.Summary)
+md.writeString("\n\n")
+
+
+if len(session.KeyPoints) > 0 {
+	md.WriteString("## Key Points\n")
+	for _, point := range session.KeyPoints {
+		md.WriteSting(f.Sprintf("- %s\n", point))
+	}
+	md.WriteString("\n")
+}
+
+if len(session.ActionItems) > 0 {
+	md.WriteString("## Action Item\n")
+	for _, item := range session.ActionItems {
+		md.WriteString(f.sprintf("- [ ] %s\n", item))
+	}
+	md.WriteString("\n")
+}
+
+md.writeString(f.Sprintf("## Statistics\n"))
+md.WriteString(f.Sprintf("- Total Words: %d\n", session.TotalWords))
+md.WriteString(f.Sprintf("- Segments: %d\n",  session.SegmentCount))
+
+return md.String()
+}
+
+func writeToFile(filename, content string) error {
+	return os.WriteFile(filename, []byte(content), 0644)
 }
