@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"os"
 )
 
 
@@ -33,17 +34,17 @@ func generateSessionSummary(session *MeetingSession) error {
 
 	//STEP 2: Extract key points using text analysis
 	keyPoints := extractKeyPoints(fullTranscript)
-	session.KeyPoints = KeyPoints
+	session.KeyPoints = keyPoints
 	l.Printf("🎯 Found %d key points", len(keyPoints))
 
 	//STEP 3: Identify action items and tasks
 	actionItems := extractActionItems(fullTranscript)
-	session.ActionItem = actionItems
+	session.ActionItems = actionItems
 	l.Printf("✅ Found %d action items", len(actionItems))
 
 	//STEP 4: Detect participants (if mentioned by name)
 	participants := extractParticipants(fullTranscript)
-	sesion.Participants = participants
+	session.Participants = participants
 	l.Printf("👀 Detected %d participants", len(participants))
 
 
@@ -107,7 +108,7 @@ func combineTranscripts(notes []Note) string{
 
 		var scoredSentences []ScoredSentence
 		for _, sentence := range sentences {
-			sentnece = strings.TRimSpace(sentence)
+			sentence = strings.TrimSpace(sentence)
 			if len(sentence) < 10{
 				continue
 			}
@@ -177,22 +178,22 @@ func combineTranscripts(notes []Note) string{
 			//Deadline patterns
 			"by next week", "by friday", "deadline", "due date", "complete by",
 			//Follow-up patterns
-			"follow up", "check on", "update on", "report back", "circle back"
+			"follow up", "check on", "update on", "report back", "circle back",
 		}
 
 		sentences := splitIntoSentences(transcript)
 
 		for _, sentence := range sentences{
 			sentence = strings.TrimSpace(sentence)
-			lowerSentence := strings.ToLower(sentnece)
+			lowerSentence := strings.ToLower(sentence)
 
 			//check if sentence contains action patterns
 			for _, pattern := range actionPatterns {
 				if strings.Contains(lowerSentence, pattern){
 					//Clean up the sentence and add as action item
-					cleandedSentence := cleansentence(sentence)
+					cleanedSentence := cleanSentence(sentence)
 					if len(cleanedSentence) > 10 && !isDuplicate(cleanedSentence,actionItems) {
-						actionItems = append(actionItems, cleandedSentence)
+						actionItems = append(actionItems, cleanedSentence)
 					}
 					break
 				}
@@ -236,23 +237,24 @@ func combineTranscripts(notes []Note) string{
 			for _, pattern := range namePatterns {
 				if strings.HasPrefix(lowerWord, pattern) && i+1 < len(words){
 					//Next word might be a name
-				}
-				nextWord := strings.TrimSpace(word[i+1])
+				
+				nextWord := strings.TrimSpace(words[i+1])
 				nextWord = strings.Trim(nextWord, ".,!?:;")
 
 
 				//Simple heuristic: names are usually capitalized and 2-15 characters
-				if len(nextWord) >= 2 && len(nextWord) <= 15 && isCapitalized(nextWord)
-				{
+				if len(nextWord) >= 2 && len(nextWord) <= 15 && isCapitalized(nextWord){
 					if !isDuplicate(nextWord, participants){
 						participants = append(participants, nextWord)
 					}
 				}
 			}
 		}
+	
 
 		//Also look for @ mentions (like "@john" or "@sarah_smith")
-		if stings.HasPrefix(word, "@") && len(word) > 1 {
+	
+		if strings.HasPrefix(word, "@") && len(word) > 1 {
 			name := strings.TrimPrefix(word, "@")
 		name = strings.Trim(name, ".,!?:;")
 	if len(name) >= 2 && !isDuplicate(name, participants){
@@ -262,12 +264,12 @@ func combineTranscripts(notes []Note) string{
 }
 }
 
-return participants
+	return participants
 }
 
 
 //GENERATE TEXT SUMMARY
-func generateTextSummary(transcript string, keyPoints []string, actionItems []string) string{
+func generateTextSummary(transcript string, keyPoints []string, actionItems []string) string {
 	l.Println("📝 Generating text summary...")
 
 	var summary strings.Builder
@@ -305,7 +307,7 @@ func generateTextSummary(transcript string, keyPoints []string, actionItems []st
 	//Action Items section
 	if len(actionItems) > 0 {
 		summary.WriteString("Action Items:\n")
-		for i, item := range actionItems {
+		for _, item := range actionItems {
 			summary.WriteString(f.Sprintf(". %s\n", item))
 
 		}
@@ -341,7 +343,7 @@ func splitIntoSentences(text string) []string {
 
 //check if text contains numbers
 func containsNumbers(text string) bool {
-	re := regexp.Mustcomplie(`\d`)
+	re := regexp.Mustcompile(`\d`)
 	return re.MatchString(text)
 }
 
@@ -377,7 +379,7 @@ return sentence
 
 //Check if item is already in list (case-insensitive)
 func isDuplicate(item string, list []string) bool {
-	lowwerItem := strings.ToLower(item)
+	lowerItem := strings.ToLower(item)
 	for _, existing := range list {
 		if strings.ToLower(existing) == lowerItem {
 			return true
@@ -408,7 +410,7 @@ func getNotesBySessionID(sessionID string) ([]Note, error) {
 	//Filter by session ID
 	var sessionNotes []Note
 	for _, note := range allNotes {
-		if note.SessionID == sessionId {
+		if note.SessionID == sessionID {
 			sessionNotes = append(sessionNotes, note)
 		}
 	}
@@ -531,7 +533,7 @@ func exportSessionSummary(sessionID string, format ExportFormat, filename string
 
 
 //Format session as markdown
-func formatSessionAsMaarkdown(session *MeetingSession) string {
+func formatSessionAsMarkdown(session *MeetingSession) string {
 	var md strings.Builder
 
 md.WriteString(f.Sprintf("# %s\n\n", session.Title))
@@ -550,13 +552,13 @@ if len(session.Participants) > 0 {
 
 md.WriteString("## Summary\n")
 md.WriteString(session.Summary)
-md.writeString("\n\n")
+md.WriteString("\n\n")
 
 
 if len(session.KeyPoints) > 0 {
 	md.WriteString("## Key Points\n")
 	for _, point := range session.KeyPoints {
-		md.WriteSting(f.Sprintf("- %s\n", point))
+		md.WriteString(f.Sprintf("- %s\n", point))
 	}
 	md.WriteString("\n")
 }
@@ -564,12 +566,12 @@ if len(session.KeyPoints) > 0 {
 if len(session.ActionItems) > 0 {
 	md.WriteString("## Action Item\n")
 	for _, item := range session.ActionItems {
-		md.WriteString(f.sprintf("- [ ] %s\n", item))
+		md.WriteString(f.Sprintf("- [ ] %s\n", item))
 	}
 	md.WriteString("\n")
 }
 
-md.writeString(f.Sprintf("## Statistics\n"))
+md.WriteString(f.Sprintf("## Statistics\n"))
 md.WriteString(f.Sprintf("- Total Words: %d\n", session.TotalWords))
 md.WriteString(f.Sprintf("- Segments: %d\n",  session.SegmentCount))
 
