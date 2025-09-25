@@ -4,6 +4,7 @@ import (
 	f "fmt"
 	l "log"
 	"time"
+	"strings"
 )
 
 
@@ -12,7 +13,7 @@ import (
 var (
 	//CHANNELS
 	audioChannel = make(chan []byte, 100)
-	transciptChan = make(chan TranscriptSegment, 50)
+	transcriptChan = make(chan TranscriptSegment, 50)
 
 	//STATUS TRACKING
 	currentSession  *MeetingSession = nil
@@ -23,7 +24,7 @@ var (
 
 
 //START TRANSCRIPTION SESSION
-func StartTransciptionSession (title string) (*MeetingSession, error) {
+func StartTranscriptionSession (title string) (*MeetingSession, error) {
  if currentSession != nil && currentSession.Status == "active" {
 	return nil, f.Errorf("A transcription session is already active")
  }
@@ -133,7 +134,7 @@ func startAudioCapture(){
 	// SIMULATE AUDIO RECORDING
 	 for isRecording {
 		//generate fake audio, this is suppose to come from my mic, for now it is fake audio
-		fakeAudioData := generateSimulationAudio(config.ChunkDuration)
+		fakeAudioData := generateSimulateAudio(config.ChunkDuration)
 
 		//Send audio data through the channel to the speech processor
 		
@@ -153,7 +154,7 @@ func startAudioCapture(){
 //GOROUTINE 2: SPEECH - TO - TEXT PROCESSOR
 // This function runs in the background converting audio to text
 
-func startSpeexhProcessor(){
+func startSpeechProcessor(){
 	l.Printf("🧠 Starting speech processor...")
 	isProcessing = true
 
@@ -259,7 +260,7 @@ func generateSimulateAudio(duration time.Duration) []byte {
 
 	sampleRate := 16000
 	sample := int(duration.Seconds() * float64(sampleRate))
-	return make([]byte, samples*2)
+	return make([]byte, sample*2)
 }
 
 

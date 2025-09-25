@@ -343,7 +343,7 @@ func splitIntoSentences(text string) []string {
 
 //check if text contains numbers
 func containsNumbers(text string) bool {
-	re := regexp.Mustcompile(`\d`)
+	re := regexp.MustCompile(`\d`)
 	return re.MatchString(text)
 }
 
@@ -419,7 +419,7 @@ func getNotesBySessionID(sessionID string) ([]Note, error) {
 }
 
 //Save session to database
-func saveSessionTODB(session *MeetingSession) error {
+func saveSessionToDB(session *MeetingSession) error {
 	//Load exiting database
 	db, err := LoadNotesDB()
 	if err != nil {

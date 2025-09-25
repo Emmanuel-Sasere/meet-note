@@ -52,7 +52,7 @@ type MeetingSession struct {
 type TranscriptSegment struct {
 	ID    string   `json:"id"`
 	Text   string    `json:"text"`
-	SessionId string  `json:"session_id"`
+	SessionID string  `json:"session_id"`
 	Timestamp time.Time  `json:"timestamp"`
 
 
