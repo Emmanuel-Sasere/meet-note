@@ -81,7 +81,7 @@ func StartWebServer() error {
 	l.Printf("✅ Web dashboard available at: http://localhost:%s", serverPort)
 	l.Printf("🛜 API endpoints available at http://localhost:%s/api/", serverPort)
 
-	return http.ListenAndServer(address, nil)
+	return http.ListenAndServe(address, nil)
 }
 
 
@@ -152,7 +152,7 @@ func handleAPIStatus(w http.ResponseWriter, r *http.Request) {
 
 //GET ALL SESSIONS
 func handleAPISessions(w http.ResponseWriter, r *http.Request)  {
-	if r.Methid != "GET" {
+	if r.Method != "GET" {
 		sendAPIError(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -171,29 +171,6 @@ func handleAPISessions(w http.ResponseWriter, r *http.Request)  {
 	sendAPISuccess(w, "Sessions retrieved successfully", sessions)
 }
 
-//GET SPECIFIC SESSION DETAILS
-func handleAPISession(w http.RespoonseWriter, r *http.Request) {
-	if r.Method != "GET"{
-		sendAPIError(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	db, err := LoadNotesDB()
-	if err != nil {
-		sendAPIError(w, "Failed to load sessions", http.StatusInternalServerError)
-		return
-	}
-
-	
-
-	//RETURN SESSIONS IN REVERSE CHRONOLOGICAL ORDER (newest first)
-	sessions := make([]MeetingSession, len(db.Sessions))
-	for i,j := 0, len(db.Sessions)-1; i <= j; i, j = i+1, j-1{
-		sessions[i], sessions[j] = db.Sessions[j], db.Sessions[i]
-	} 
-
-	sendAPISuccess(w, "Sesssion retrieved successfully", sessions)
-}
 
 
 // GET SPECIFIC SESSION DETAILS
@@ -344,4 +321,189 @@ func handleAPINotes(w http.ResponseWriter, r *http.Request) {
 }
 
 //EXPORT SESSION VIA API
-	
+
+func handleAPIExport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		sendAPIError(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+
+
+
+	var request struct {
+		SessionID string  `json:"session_id"`
+		Format  ExportFormat `json:"format"`
+		Filename string   `json:"filename"`
+	}
+
+
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		sendAPIError(w, "Invalid request format", http.StatusBadRequest)
+		return
+	}
+
+	//Validate request
+	if request.SessionID == "" || request.Format == "" || request.Filename == ""{
+		sendAPIError(w, "Session ID, format, and filename are required", http.StatusBadRequest)
+		return
+	}
+
+	//Export session
+	err = exportSessionSummary(request.SessionID, request.Format, request.Filename)
+	if err != nil {
+		sendAPIError(w, f.Sprintf("Export failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	sendAPISuccess(w, "Session exported successfully", map[string]string{
+		"filename": request.Filename,
+	"format": string(request.Format),
+	})
+
+}
+
+//LIVE UPDATES ENDPOINT
+//This provides real-time updates for the web dashboard
+func handleAPILive(w http.ResponseWriter, r *http.Request){
+	if r.Method != "GET" {
+		sendAPIError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+
+//This is a simplified live update endpoint
+//In a production system, you'd use WebSockets or Server-sent events
+
+liveData := map[string]interface{}{
+	"timestamp":    time.Now(),
+	"is_recording":  isRecording,
+	"currrent_session":  currentSession,
+	"audio_level":  0.65,
+	"words_per_minute":   calculateCurrentWPM(),
+	"queued_segments":  len(audioChannel),
+	"processed_segments": 0,
+}
+
+sendAPISuccess(w, "Live data retrieved", liveData)
+
+
+}
+
+//STATIC FILE HANDLER
+// sERVES THE HTML,CSS AND JAVASCRIPT FILES FOR WEB DASHBOARD
+func handleStaticFiles(w http.ResponseWriter, r *http.Request){
+	// If requesting root path, serve index.html
+	if r.Url.Path == "/"{
+		http.ServeFile(w, r, StaticDir+"index.html")
+		return
+	}
+
+
+	//For other paths, serve files from static directory
+	filepath := staticDir + strings.TrimPrefix(r.URL.Path, "/")
+
+	//Security check:prevent directory traversal
+	if strings.Contains(filepath, ".."){
+		http.Error(w, "Invalid file path", http.StatusBadRequest)
+		return
+	}
+
+
+	//Serve the file
+	http.ServeFile(w, r, filepath)
+}
+
+
+
+//CORS MIDDLEWARE
+//Allows web browsers to access our API from any origin
+func corsMiddleware(next http.Handler) http.HandleFunc {
+	return func(w http.responseWriter, r *http.Request) {
+		//Set CORS. headers
+		w.Header().Set("Acess-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE,OPTIONS")
+		w.Header().Set("Acess-Control-Allow-Header", "Content-Type, Authorization")
+
+		//Handle preflight request
+		if r.Method == "OPTIONS" {
+			return
+		}
+
+
+		//Call next handler
+		next.ServerHTTP(w,r)
+	}
+}
+
+
+//HELPER FUNCTIONS
+
+//Send successful API response
+func sendAPISuccess(w http.ResponseWriter, message string, data interface{}){
+	w.Header().Set("Content-Type", "application/json")
+	response := APIResponse{
+		Success: true,
+		Message: message,
+		Data: data,
+		TimeStamp: time.Now(),
+	}
+	json.NewEncoder(w).Encode(response)
+}
+
+
+//Send error API response
+func sendAPIError(w http.ResponseWriter, message string, statusCode int){
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+
+	response := APIResponse{
+		Success:  false,
+		Message: message,
+		Timestamp: time.Now(),
+	}
+	json.NewEncoder(w).Encode(response)
+}
+
+//Calculate total words across all sessions
+func calculateTotalWords(sessions []MeetingSession) int {
+	total := 0
+	for _, session := range sessions {
+		total += session.TotalWords
+	}
+	return total
+}
+
+
+
+//GET RECENT SESSIONS
+func getRecentSessions(session []MeetingSession, limit int) []MeetingSession {
+	if len(sessions) <= limit {
+		return sessions
+	}
+	return session[len(sessions)-limit:]
+}
+
+//Count transcript notes vs manual notes
+func countTranscriptNotes(notes []Note) int {
+	count := 0 
+	for _, note := range notes {
+		if note.IsTranscript{
+			count++
+		}
+	}
+	return count
+}
+
+
+//Calculate current words per minute
+func calculateCurrentWPM() float64 {
+	if currentSession == nil {
+		return 0.0
+	}
+
+	duration := time.Since(currentSession.StartTime).Minutes()
+	if duration <= 0 {
+		return 0.0
+	}
+	return float64(currentSession.TotalWords) / duration
+}

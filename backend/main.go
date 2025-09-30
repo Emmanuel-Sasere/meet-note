@@ -3,222 +3,129 @@
 package main
 
 import (
+	"bufio"
 	f "fmt"
+	l "log"
 	"os"
 	"strings"
+	"time"
+
 )
 
 
-const version = "2.0.0"
+const version = "3.0.0"
 
 
 func main(){
+	f.Println("===========================================")
+	f.Println("🎙️ MeetNote Version 3 - Live Transcription")
+	f.Println("===========================================")
+	f.Println()
+	}
+
+	//Initialize the system
+	err := initializeTranscriptionSystem()
+	if err != nil {
+		l.Fatalf("❌ Failed to initialize system: %v", err)
+	}
+
+	//CHECK COMMAND LINE ARGUMENT
 	if len(os.Args) < 2 {
-		showUsage()
+		showMainMenu()
 		return
 	}
 
 	command := os.Args[1]
 
 
+	//Handle commands
 	switch command {
-	case "add":
-		handleAdd()
-	case "list":
-		handleList()
-	case "delete":
-		handleDelete()
-	case "search":
-		handleSearch()
+	case "start":
+		handleStartTranscription()
+	case "stop":
+		handleStopTranscription()
+	case "status":
+		handleShowStatus()
+	case "sessions":
+		handleListSessions()
+	case "summary":
+		handleShowSummary()
 	case "export":
-		handleExport()
-	case "categories":
-		handleCategories()
+		handleExportSession()
+	case "interactive", "menu":
+		runInteractiveMode()
+	case "server":
+		handleStartWebServer()
 	case "help", "--help", "-h":
 		showHelp()
 	case "version", "--version", "-v":
-		f.Printf("meetnote version %s\n", version)
+		f.Printf("MeetNote version %s\n", version)
 	default:
-		f.Printf("Unkown command: %s\n", command)
-		showUsage()
+		f.Printf("Unknown command: %s\n\n", command)
+		showMainMenu()
 		os.Exit(1)
 	}
 }
 
+//INITIALIZE TRANSCRIPTION SYSTEM
+func initializeTranscriptionSystem() error {
+	l.Println("🔧 Initializing transcription system...")
 
-func handleAdd(){
-	if len(os.Args) < 3 {
-		f.Println("Usage: meetnote add \"note text\" [--category category] [--tags=<tag1, tag2>]")
-		return
+	//check if notes database exists, create if not 
+	_, err := LoadNotesDB()
+	if err != nil {
+		l.Println("📁 Creating new notes database...")
+		//Create empty database
+		emptyDB := &NotesDB {
+			Notes:   []Note{},
+			Sessions: []MeetingSession{},
+			Segments:  []TranscriptSegment{},
+			Config: AudioConfig{
+				SampleRate:    16000,
+				Channels:    1,
+				BitDepth:   16,
+				ChunkDuration:  2 * time.Second,
+				Language:   "en",
+				MinConfidence: 0.6,
+				MaxSegmentLength:  200,
+				EnableNoiseSuppression: true,
+			},
+			LastTranscription: time.Now(),
+		}
+
+		err = SaveNotesDB(emptyDB)
+		if err != nil{
+			return f.Errorf("failed to create database: %w", err)
+		}
 	}
-	text := os.Args[2]
-	category := ""
-	var tags []string
+	l.Println("✅ System initialized successfully")
+	return nil
+}
 
-	for i := 3; i < len(os.Args); i++ {
-		arg := os.Args[i]
+//HANDLE START TRANSCRIPTION
+func handleStartTranscription(){
+	var title string
 
-		if strings.HasPrefix(arg, "--category="){
-			category = strings.TrimPrefix(arg, "--category=")
-		}else if strings.HasPrefix(arg, "--tags="){
-			tagStr := strings.TrimPrefix(arg, "--tags=")
+	//Get meeting title from command line or prompt user
+	if len(os.Args) >= 3 {
+		title = strings.Join(os.Args[2:], " ")
 
-			tags = strings.Split(tagStr, ",")
-
-			for j, tag := range tags {
-				tags[j] = strings.TrimSpace(tag)
-			}
+	}else {
+		f.Print("Enter meeting title: ")
+		scanner := bufio.NewScanner(os.Stdin)
+		if scanner.Scan(){
+			title = scanner.Text()
 		}
 	}
 
-	err := AddNote(text, category, tags)
-	if err != nil {
-		f.Printf("Error adding note: %v\n", err)
-		os.Exit(1)
+	if title == ""{
+		title = f.Sprintf("Meeting %s", time.Now().Format("2006-02-02 15:04"))
 	}
-	f.Printf("\u2713 Note added successfully")
-	if category != "" {
-		f.Printf(" to category '%s'", category)
-	}
-	if len(tags) > 0 {
-		f.Printf("with tags: %s", strings.Join(tags, ", "))
-	}
-	f.Println()
-}
-
-func handleList() {
-	var notes []Note
-	var err error
-
-	if len(os.Args) >= 3 && strings.HasPrefix(os.Args[2], "--category=") {
-		category := strings.TrimPrefix(os.Args[2], "--category=")
-		notes, err = FilterNotesByCategory(category)
-	} else {
-		notes, err = GetAllNotes()
-	}
-
-	if err != nil {
-		f.Printf("Error loading notes: %v\n", err)
-		os.Exit(1)
-	}
-	if len(notes) == 0 {
-		f.Println("No notes found.")
-		return
-	}
-	f.Printf("Found %d note(s):\n\n", len(notes))
-	for i, note := range notes {
-		f.Printf("%d. [%s] %s/n", i+1, note.Timestamp.Format("2006-01-02 15:04"), note.Category)
-		f.Printf("  ID: %s\n, note.ID")
-		f.Printf("  %s\n", note.Text)
-
-		if len(note.Tags) > 0 {
-			f.Printf("  Tags: %s\n", strings.Join(note.Tags, ", "))
-		}
-
-		f.Println()
-	}
+	f.Printf("🎙️ Starting transcription session: %s\n", title) 
 }
 
 
-func handleDelete(){
-	if len(os.Args) < 3 {
-		f.Println("Usage: meetnote delete <note-id>")
-		f.Println("Use 'meetnite list'to see not IDs")
-		return
-	}
 
-	noteID := os.Args[2]
-	err := DeleteNoteByID(noteID)
-	if err != nil {
-		f.Printf("Error deleting note: %v\n", err)
-		os.Exit(1)
-	}
-
-	f.Println("\u2713 Note deleted successfully")
-}
-
-
-func handleSearch(){
-	if len(os.Args) < 3 {
-		f.Println("Usage: meetnote search <search-term>")
-		return
-	}
-
-	searchTerm := os.Args[2]
-	notes, err := SearchNotes(searchTerm)
-	if err != nil {
-		f.Printf("Error searching notes: %v\n", err)
-		os.Exit(1)
-	}
-
-	if len(notes)  == 0 {
-		f.Printf("No matching notes found containing '%s'\n", searchTerm)
-		return
-	}
-
-	f.Printf("Found %d note(s) containing '%s':\n\n", len(notes), searchTerm)
-	for i, note := range notes {
-		f.Printf("%d. [%s] %s\n", i+1, note.Timestamp.Format("2006-01-02 15:04"), note.Category)
-		f.Printf("  ID: %s\n", note.ID)
-		f.Printf("  %s\n", note.Text)
-		f.Println()
-	}
-}
-
-
-func handleExport() {
-	if len(os.Args) < 4 {
-		f.Println("Usage: meetnote export <format> <filename> [--category=<name>]")
-		f.Println("Formats: txt, md")
-		return
-	}
-
-	formatStr := os.Args[2]
-	filename := os.Args[3]
-	category := ""
-
-	if len(os.Args) >= 5 && strings.HasPrefix(os.Args[4], "--category="){
-		category = strings.TrimPrefix(os.Args[4], "--category=")
-	}
-
-	var format ExportFormat
-	switch formatStr{
-	case "txt":
-		format = FormatTXT
-	case "md":
-		format = FormatMarkdown
-	default:
-		f.Printf("Unsupported format: %s\n", formatStr)
-		f.Printf("Supported formats: txt, md")
-		return
-	}
-
-	err := ExportNotes (category, format, filename)
-	if err != nil {
-		f.Printf("Error exporting notes: %v\n", err)
-		os.Exit(1)
-	}
-
-	f.Printf("\u2713 Notes exported to %s\n", filename)
-}
-
-
-func handleCategories(){
-	categories, err := GetCategories()
-	if err != nil {
-		f.Printf("Error loading categories: %v\n", err)
-		os.Exit(1)
-	}
-
-	if len(categories) == 0 {
-	f.Println("No categories found.")
-	return
-}
-f.Printf("Available categories (%d):\n", len(categories))
-for _, category := range categories {
-	f.Printf("  - %s\n", category)
-}
-}
 
 func showUsage(){
 	f.Println("Usage: meetnote <command> [options]")
