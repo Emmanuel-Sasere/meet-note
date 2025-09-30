@@ -122,8 +122,116 @@ func handleStartTranscription(){
 		title = f.Sprintf("Meeting %s", time.Now().Format("2006-02-02 15:04"))
 	}
 	f.Printf("🎙️ Starting transcription session: %s\n", title) 
+
+session, err := StartTranscriptionSession(titlte)
+if err != nil {
+	l.Fatalf("❌ Failed to start transcription: %v", err)
 }
 
+f.Printf("✅ Session started successfully!\n")
+f.Printf("  Session ID: %s\n", session.ID)
+f.Printf("  Title: %s\n", session.Title)
+f.Printf("  Started: %s\n", session.StartTime.Format("15:04:05"))
+f.Println()
+f.Println("🛑 Recording in progress...")
+f.Println("   - Speak naturally, the system will capture everything")
+f.Println("  - use 'meetnote stop' to end the session")
+f.Println("  - use 'meetnote status' to check current status")
+f.Println()
+f.Println("Press ctrl+C to stop the program (transcription will continue in background)")
+}
+
+
+//HANDLE STOP TRANSCRIPTION 
+func hanldStopTranscription(){
+	f.Println("⏹️ Stopping transcription session...")
+
+	err := StopTranscriptionSession()
+	if err != nil {
+		l.Fatalf("❌ Failed to stop transcription: %v", err)
+	}
+
+f.Println("✅ Transcription session stopped successfully!")
+f.Println("📈 Generating meeting summary...")
+
+
+// Show brief summary
+db, err := LoadNotesDB()
+if err == nil && len(db.Sessions) > 0 {
+	lastSession := db.Sessions[len(db.Sessions)-1]
+	f.Printf("\n📝 Session Summary:\n")
+	f.Printf("  Title: %s\n", lastSession.Title)
+	f.Printf("  Duration: %v\n", lastSession.TotalWords)
+	f.Printf("  Words transcribed: %d\n",)
+	f.Printf("  Key points: %d\n", len(lastSession.KeyPoints))
+	f.Printf("  Action items: %d\n", len(lastSession.ActionItems))
+	f.Println()
+	f.Printf("Use 'meetnote summary %s' for detailed summary\n", lastSession.ID)
+}
+
+
+
+}
+
+
+//HANDLE SHOW STATUS
+func handleShowStatus() {
+	f.Println("📈 Meetnote status")
+	f.Println("==================")
+
+
+	//Check if transcription is active
+if currentSession != nil && currentSession.Status == "active" {
+	f.Printf("🛑 Recording: %s\n", currentSession.Title)
+	f.Printf("    Session ID: %s\n", currentSession.ID)
+	f.Printf("    Started: %s\n", currentSession.StartTime.Format("15:04:05"))
+	f.Printf("    Duration; %v\n", time.Since(currentSession.StartTime))
+	f.Printf("    Words captured: %d\n", currentSession.TotalWords)
+	f.Printf("   Segments: %d\n", currentSession.Segmentcount)
+}else {
+	f.Println("🚫 No active transcription session")
+}
+
+//Show recent sessions
+db, err := LoadNotesDB()
+if err != nil {
+	f.Printf("❌ Error loading database: %v\n", err)
+	return
+}
+
+f.Printf("\n📊 Total Sessions: 5d\n", len(db.Sessions))
+f.Printf("📝 Total Notes: %d\n", len(db.Notes))
+
+if len(db.Sessions) > 0 {
+	f.Println("\n⏲️ Recent Sessions:")
+	//Show last 3 sessions
+	start := len(db.Sessions) -3
+	if start < 0 {
+		start = 0
+	}
+
+	for i := len(db.Sessions) - 1; i >= start; i-- {
+		session := db.Sessions[i]
+		f.Printf("  %s - %s (%d words)\n", session.StartTime.Format("Jan 2 15:04"),
+	session.Title,
+	session.TotalWords)
+	}
+
+}
+}
+
+
+//HANDLE LIST SESSIONS
+func handleListSessions(){
+	db, err := LoadNotesDB()
+	if err != nil {
+		l.Fatalf("❌ Error loading database: %v", err)
+	}
+
+	if len(db.Sessions) == 0 {
+		f.Println("")
+	}
+}
 
 
 
