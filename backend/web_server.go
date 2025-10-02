@@ -32,9 +32,9 @@ type APIResponse struct {
 type WebStatus struct {
 	IsRecording   bool     `json:"is_recording"`
 	CurrentSession *MeetingSession   `json:"current_session"`
-	RecentSession  []MeetingSession  `json:"recent_sessions"`
+	RecentSessions  []MeetingSession  `json:"recent_sessions"`
 	TranscriptionStatus TranscriptionStatus  `json:"transcription_status"`
-	SystemStats       SystemStats   `json:""system_stats`
+	SystemStats       SystemStats   `json:"system_stats"`
 }
 
 
@@ -52,37 +52,39 @@ type SystemStats struct {
 
 
 //STAT WEB SERVER
+// START WEB SERVER
 func StartWebServer() error {
 	l.Printf("🌐 Starting MeetNote web server on port %s", serverPort)
 
-	//API ROUTES (RETURN JSON DATA)
-	http.HandleFunc("/api/status", handleAPIStatus)
-	http.HandleFunc("/api/sessions", handleAPISessions)
-	http.HandleFunc("/api/session/", handleAPISession)
-	http.HandleFunc("/api/transcription/start", handleAPIStart)
-	http.HandleFunc("/api/transcription/stop", handleAPIStop)
-	http.HandleFunc("/api/notes", handleAPINotes)
-	http.HandleFunc("/api/export", handleAPIExport)
+	// Create new ServeMux instead of using DefaultServeMux
+	mux := http.NewServeMux()
 
+	// API ROUTES
+	mux.HandleFunc("/api/status", handleAPIStatus)
+	mux.HandleFunc("/api/sessions", handleAPISessions)
+	mux.HandleFunc("/api/session/", handleAPISession)
+	mux.HandleFunc("/api/transcription/start", handleAPIStart)
+	mux.HandleFunc("/api/transcription/stop", handleAPIStop)
+	mux.HandleFunc("/api/notes", handleAPINotes)
+	mux.HandleFunc("/api/export", handleAPIExport)
 
-	//REAL-TIME ROUTE
-	http.HandleFunc("/api/live", handleAPILive)
+	// REAL-TIME ROUTE
+	mux.HandleFunc("/api/live", handleAPILive)
 
-	//STACTIC FILE ROUTES (serve NEXTJS FILES)
-	http.HandleFunc("/", handleStaticFiles)
+	// STATIC FILE ROUTES
+	mux.HandleFunc("/", handleStaticFiles)
 
-	//Enable CORS for all routes (allows browser access)
-	http.HandleFunc("/", corsMiddleware(http.DefaultServeMux))
+	// Wrap mux with CORS middleware
+	handler := corsMiddleware(mux)
 
-
-
-	//START THE SERVER
+	// Start server
 	address := ":" + serverPort
 	l.Printf("✅ Web dashboard available at: http://localhost:%s", serverPort)
 	l.Printf("🛜 API endpoints available at http://localhost:%s/api/", serverPort)
 
-	return http.ListenAndServe(address, nil)
+	return http.ListenAndServe(address, handler)
 }
+
 
 
 //API ENDPOINTS
@@ -312,7 +314,7 @@ func handleAPINotes(w http.ResponseWriter, r *http.Request) {
 
 	//APPLY LIMIT IF SPECIFIED
 	if  limitStr != ""{
-		if limit, err := strconv.Atoi(limitStr); err == nil && limit > 0 && linit < len(notes){
+		if limit, err := strconv.Atoi(limitStr); err == nil && limit > 0 && limit < len(notes){
 			notes = notes[len(notes)-limit:] // gET MOST RECENT NOTES
 		}
 	}
@@ -393,8 +395,8 @@ sendAPISuccess(w, "Live data retrieved", liveData)
 // sERVES THE HTML,CSS AND JAVASCRIPT FILES FOR WEB DASHBOARD
 func handleStaticFiles(w http.ResponseWriter, r *http.Request){
 	// If requesting root path, serve index.html
-	if r.Url.Path == "/"{
-		http.ServeFile(w, r, StaticDir+"index.html")
+	if r.URL.Path == "/"{
+		http.ServeFile(w, r, staticDir+"index.html")
 		return
 	}
 
@@ -417,23 +419,26 @@ func handleStaticFiles(w http.ResponseWriter, r *http.Request){
 
 //CORS MIDDLEWARE
 //Allows web browsers to access our API from any origin
-func corsMiddleware(next http.Handler) http.HandleFunc {
-	return func(w http.responseWriter, r *http.Request) {
-		//Set CORS. headers
-		w.Header().Set("Acess-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE,OPTIONS")
-		w.Header().Set("Acess-Control-Allow-Header", "Content-Type, Authorization")
-
-		//Handle preflight request
-		if r.Method == "OPTIONS" {
-			return
-		}
+func corsMiddleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        // CORS headers
+        w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+        w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+        w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+				f.Println("✅ CORS middleware applied for:", r.URL.Path)
 
 
-		//Call next handler
-		next.ServerHTTP(w,r)
-	}
+        // Handle preflight requests
+        if r.Method == http.MethodOptions {
+            w.WriteHeader(http.StatusNoContent)
+            return
+        }
+
+        // Continue to actual handler
+        next.ServeHTTP(w, r)
+    })
 }
+
 
 
 //HELPER FUNCTIONS
@@ -445,7 +450,7 @@ func sendAPISuccess(w http.ResponseWriter, message string, data interface{}){
 		Success: true,
 		Message: message,
 		Data: data,
-		TimeStamp: time.Now(),
+		Timestamp: time.Now(),
 	}
 	json.NewEncoder(w).Encode(response)
 }
@@ -477,10 +482,10 @@ func calculateTotalWords(sessions []MeetingSession) int {
 
 //GET RECENT SESSIONS
 func getRecentSessions(session []MeetingSession, limit int) []MeetingSession {
-	if len(sessions) <= limit {
-		return sessions
+	if len(session) <= limit {
+		return session
 	}
-	return session[len(sessions)-limit:]
+	return session[len(session)-limit:]
 }
 
 //Count transcript notes vs manual notes

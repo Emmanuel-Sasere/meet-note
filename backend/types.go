@@ -54,6 +54,9 @@ type TranscriptSegment struct {
 	Text   string    `json:"text"`
 	SessionID string  `json:"session_id"`
 	Timestamp time.Time  `json:"timestamp"`
+	StartTime float64  `json:"start_time"`
+	Duration  float64  `json:"duration"`
+	EndTime   float64  `json:"end_time"`
 
 
 

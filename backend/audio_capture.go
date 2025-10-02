@@ -26,7 +26,7 @@ var (
 //START TRANSCRIPTION SESSION
 func StartTranscriptionSession (title string) (*MeetingSession, error) {
  if currentSession != nil && currentSession.Status == "active" {
-	return nil, f.Errorf("A transcription session is already active")
+	return nil, f.Errorf("a transcription session is already active")
  }
 
 
@@ -95,7 +95,7 @@ func StopTranscriptionSession() error {
 	//Generate final summary
 	err := generateSessionSummary(currentSession)
 	if err != nil {
-		return f.Errorf("Warning: Failed to generate summary:%v,", err)
+		return f.Errorf("warning: Failed to generate summary:%v,", err)
 	}
 
 

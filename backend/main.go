@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"net/http"
 
 )
 
@@ -16,12 +17,40 @@ import (
 const version = "3.0.0"
 
 
+
+func handleStartWebServer() {
+    f.Println("🌐 Starting web server at http://localhost:8080")
+
+    mux := http.NewServeMux()
+
+    // API endpoints
+    mux.HandleFunc("/api/status", handleAPIStatus)
+			f.Println("🌐 Starting web server...")
+	f.Println("This will run the web dashboard alongside transcription")
+	f.Println()
+	
+	// Start web server (this would integrate with the web UI from earlier)
+	// For now, just show a message
+	f.Println("Web server would start here - integrating with dashboard")
+	f.Println("Access at: http://localhost:8080")
+
+    // TODO: add more routes (sessions, notes, etc.)
+
+    // Start server with CORS middleware
+    if err := http.ListenAndServe(":8080", corsMiddleware(mux)); err != nil {
+        l.Fatalf("❌ Failed to start server: %v", err)
+    }
+
+		
+}
+
+
 func main(){
 	f.Println("===========================================")
 	f.Println("🎙️ MeetNote Version 3 - Live Transcription")
 	f.Println("===========================================")
 	f.Println()
-	}
+	
 
 	//Initialize the system
 	err := initializeTranscriptionSystem()
@@ -123,7 +152,7 @@ func handleStartTranscription(){
 	}
 	f.Printf("🎙️ Starting transcription session: %s\n", title) 
 
-session, err := StartTranscriptionSession(titlte)
+session, err := StartTranscriptionSession(title)
 if err != nil {
 	l.Fatalf("❌ Failed to start transcription: %v", err)
 }
@@ -143,7 +172,7 @@ f.Println("Press ctrl+C to stop the program (transcription will continue in back
 
 
 //HANDLE STOP TRANSCRIPTION 
-func hanldStopTranscription(){
+func handleStopTranscription(){
 	f.Println("⏹️ Stopping transcription session...")
 
 	err := StopTranscriptionSession()
@@ -187,7 +216,7 @@ if currentSession != nil && currentSession.Status == "active" {
 	f.Printf("    Started: %s\n", currentSession.StartTime.Format("15:04:05"))
 	f.Printf("    Duration; %v\n", time.Since(currentSession.StartTime))
 	f.Printf("    Words captured: %d\n", currentSession.TotalWords)
-	f.Printf("   Segments: %d\n", currentSession.Segmentcount)
+	f.Printf("   Segments: %d\n", currentSession.SegmentCount)
 }else {
 	f.Println("🚫 No active transcription session")
 }
@@ -199,7 +228,7 @@ if err != nil {
 	return
 }
 
-f.Printf("\n📊 Total Sessions: 5d\n", len(db.Sessions))
+f.Printf("\n📊 Total Sessions: %d\n", len(db.Sessions))
 f.Printf("📝 Total Notes: %d\n", len(db.Notes))
 
 if len(db.Sessions) > 0 {
@@ -227,71 +256,276 @@ func handleListSessions(){
 	if err != nil {
 		l.Fatalf("❌ Error loading database: %v", err)
 	}
-
 	if len(db.Sessions) == 0 {
-		f.Println("")
+		f.Println("📭 No meeting sessions found")
+		f.Println("Use 'meetnote start \"Meeting Title\"' to begin transcription")
+		return
+	}
+	
+	f.Printf("📚 Meeting Sessions (%d total)\n", len(db.Sessions))
+	f.Println(strings.Repeat("=", 60))
+	
+	for i := len(db.Sessions) - 1; i >= 0; i-- {
+		session := db.Sessions[i]
+		
+		f.Printf("\n🎯 %s\n", session.Title)
+		f.Printf("   ID: %s\n", session.ID)
+		f.Printf("   Date: %s\n", session.StartTime.Format("January 2, 2006 at 15:04"))
+		f.Printf("   Status: %s\n", session.Status)
+		
+		if session.EndTime != nil {
+			f.Printf("   Duration: %v\n", session.Duration)
+		} else {
+			f.Printf("   Duration: %v (ongoing)\n", time.Since(session.StartTime))
+		}
+		
+		f.Printf("   Words: %d | Segments: %d\n", session.TotalWords, session.SegmentCount)
+		
+		if len(session.KeyPoints) > 0 {
+			f.Printf("   Key Points: %d\n", len(session.KeyPoints))
+		}
+		if len(session.ActionItems) > 0 {
+			f.Printf("   Action Items: %d\n", len(session.ActionItems))
+		}
+		if len(session.Participants) > 0 {
+			f.Printf("   Participants: %s\n", strings.Join(session.Participants, ", "))
+		}
+	}
+	
+	f.Println("\nUse 'meetnote summary <session-id>' to view detailed summary")
+}
+
+// HANDLE SHOW SUMMARY  
+func handleShowSummary() {
+	var sessionID string
+	
+	if len(os.Args) >= 3 {
+		sessionID = os.Args[2]
+	} else {
+		// Show latest session summary
+		db, err := LoadNotesDB()
+		if err != nil || len(db.Sessions) == 0 {
+			f.Println("❌ No sessions found")
+			return
+		}
+		sessionID = db.Sessions[len(db.Sessions)-1].ID
+	}
+	
+	// Find and display session
+	db, err := LoadNotesDB()
+	if err != nil {
+		l.Fatalf("❌ Error loading database: %v", err)
+	}
+	
+	var session *MeetingSession
+	for _, s := range db.Sessions {
+		if s.ID == sessionID || strings.Contains(s.Title, sessionID) {
+			session = &s
+			break
+		}
+	}
+	
+	if session == nil {
+		f.Printf("❌ Session not found: %s\n", sessionID)
+		f.Println("Use 'meetnote sessions' to see available sessions")
+		return
+	}
+	
+	// Display detailed summary
+	f.Printf("\n📋 Meeting Summary: %s\n", session.Title)
+	f.Println(strings.Repeat("=", len(session.Title)+17))
+	f.Printf("📅 Date: %s\n", session.StartTime.Format("January 2, 2006"))
+	f.Printf("⏰ Time: %s", session.StartTime.Format("3:04 PM"))
+	if session.EndTime != nil {
+		f.Printf(" - %s", session.EndTime.Format("3:04 PM"))
+	}
+	f.Printf(" (%v)\n", session.Duration)
+	f.Printf("📊 Status: %s\n", strings.ToUpper(session.Status))
+	f.Printf("💬 Words: %d | Segments: %d\n\n", session.TotalWords, session.SegmentCount)
+	
+	if session.Summary != "" {
+		f.Println("📝 Summary:")
+		f.Println(session.Summary)
+		f.Println()
+	}
+	
+	if len(session.KeyPoints) > 0 {
+		f.Println("🎯 Key Points:")
+		for i, point := range session.KeyPoints {
+			f.Printf("%d. %s\n", i+1, point)
+		}
+		f.Println()
+	}
+	
+	if len(session.ActionItems) > 0 {
+		f.Println("✅ Action Items:")
+		for _, item := range session.ActionItems {
+			f.Printf("• %s\n", item)
+		}
+		f.Println()
+	}
+	
+	if len(session.Participants) > 0 {
+		f.Printf("👥 Participants: %s\n\n", strings.Join(session.Participants, ", "))
+	}
+	
+	f.Printf("Use 'meetnote export %s summary meeting-summary.md' to export\n", session.ID)
+}
+
+// HANDLE EXPORT SESSION
+func handleExportSession() {
+	if len(os.Args) < 5 {
+		f.Println("Usage: meetnote export <session-id> <format> <filename>")
+		f.Println("Formats: summary, transcript, markdown")
+		f.Println("Example: meetnote export session_123 summary my-meeting.md")
+		return
+	}
+	
+	sessionID := os.Args[2]
+	format := ExportFormat(os.Args[3])
+	filename := os.Args[4]
+	
+	f.Printf("📤 Exporting session to %s...\n", filename)
+	
+	err := exportSessionSummary(sessionID, format, filename)
+	if err != nil {
+		l.Fatalf("❌ Export failed: %v", err)
+	}
+	
+	f.Printf("✅ Session exported successfully to %s\n", filename)
+}
+
+
+
+// INTERACTIVE MODE
+func runInteractiveMode() {
+	f.Println("🎛️ Interactive Mode")
+	f.Println("Type 'help' for commands, 'quit' to exit")
+	f.Println()
+	
+	scanner := bufio.NewScanner(os.Stdin)
+	
+	for {
+		f.Print("meetnote> ")
+		
+		if !scanner.Scan() {
+			break
+		}
+		
+		input := strings.TrimSpace(scanner.Text())
+		if input == "" {
+			continue
+		}
+		
+		if input == "quit" || input == "exit" {
+			f.Println("👋 Goodbye!")
+			break
+		}
+		
+		// Parse command
+		parts := strings.Fields(input)
+		
+		switch parts[0] {
+		case "start":
+			if len(parts) > 1 {
+				title := strings.Join(parts[1:], " ")
+				_, err := StartTranscriptionSession(title)
+				if err != nil {
+					f.Printf("❌ Error: %v\n", err)
+				} else {
+					f.Println("✅ Transcription started!")
+				}
+			} else {
+				f.Println("Usage: start <meeting title>")
+			}
+			
+		case "stop":
+			err := StopTranscriptionSession()
+			if err != nil {
+				f.Printf("❌ Error: %v\n", err)
+			} else {
+				f.Println("✅ Transcription stopped!")
+			}
+			
+		case "status":
+			handleShowStatus()
+			
+		case "sessions":
+			handleListSessions()
+			
+		case "help":
+			showInteractiveHelp()
+			
+		default:
+			f.Printf("Unknown command: %s (type 'help' for available commands)\n", parts[0])
+		}
+		
+		f.Println()
 	}
 }
 
+// HELP FUNCTIONS
 
-
-func showUsage(){
+func showMainMenu() {
 	f.Println("Usage: meetnote <command> [options]")
 	f.Println()
-	f.Println("Commands:")
-	f.Println(" add           Add a new note")
-	f.Println(" list          List all notes or notes in a category")
-	f.Println(" delete        Delete a note by ID")
-	f.Println(" search        Search notes to file")
-	f.Println(" export        Export notes to file")
-	f.Println(" categories    List all categories")
-	f.Println(" help          show detailed help")
-	f.Println(" version       show version")
+	f.Println("🎙️ TRANSCRIPTION COMMANDS:")
+	f.Println("  start [title]    Start live transcription session")
+	f.Println("  stop             Stop current transcription session")
+	f.Println("  status           Show current transcription status")
 	f.Println()
-	f.Println("Run 'meetnote help' for detailed usage examples.")
+	f.Println("📚 SESSION MANAGEMENT:")
+	f.Println("  sessions         List all meeting sessions")
+	f.Println("  summary [id]     Show detailed session summary")
+	f.Println("  export <id> <format> <file>  Export session")
+	f.Println()
+	f.Println("🎛️ INTERFACE:")
+	f.Println("  interactive      Run in interactive mode")
+	f.Println("  server           Start web server + dashboard")
+	f.Println("  help             Show detailed help")
+	f.Println("  version          Show version")
+	f.Println()
+	f.Println("Examples:")
+	f.Println("  meetnote start \"Team Standup\"")
+	f.Println("  meetnote summary")
+	f.Println("  meetnote export session_123 summary meeting.md")
 }
-
-
 
 func showHelp() {
-	f.Printf("meetnote v%s - Meeting Notes Assistant\n\n", version)
-
-	f.Println("USAGE:")
-	f.Println("   meetnote <command> [options]")
+	f.Printf("MeetNote v%s - Live Meeting Transcription\n\n", version)
+	
+	f.Println("OVERVIEW:")
+	f.Println("MeetNote automatically transcribes your meetings in real-time,")
+	f.Println("generates summaries, and extracts action items - all locally and free!")
 	f.Println()
-
-	f.Println("COMMANDS:")
-	f.Println("   add <text> [--category==<name>] [--tags=<tag1, tag2>]")
-	f.Println("   		Add a new note with optional category and tags")
+	
+	
+	showMainMenu()
+	
 	f.Println()
-
-	f.Println("   list [--category=<name>]")
-	f.Println("   		List all notes or filter by category")
+	f.Println("FEATURES:")
+	f.Println("• 🎙️ Live audio transcription (offline speech-to-text)")
+	f.Println("• 📝 Automatic note generation and organization")  
+	f.Println("• 🧠 AI-powered summarization (key points & action items)")
+	f.Println("• 📊 Session management (track multiple meetings)")
+	f.Println("• 📤 Multiple export formats (Markdown, text, JSON)")
+	f.Println("• 🌐 Web dashboard for easy management")
 	f.Println()
-
-	f.Println("   delete <note-id>")
-	f.Println("			Delete a specific note by its ID")
-	f.Println()
-	f.Println("  search <keyword>")
-	f.Println("			Search for notes containing the keyword")
-	f.Println()
-	f.Println("  export <format> <filename> [--category=<name>]")
-	f.Println("			Export notes to file (formats: txt, md)")
-	f.Println()
-	f.Println("  categories")
-	f.Println("			List all available categories")
-	f.Println()
-
-
-	f.Println("EXAMPLES:")
-	f.Println("  meetnote add \"Discussed Q1 goals\" --category==team-standup ")
-	f.Println("  meetnote add \"Fix login bug\" --tags=urgent, backend")
-	f.Println("  meetnote list --category=team-standup")
-	f.Println("  meetnote search \"goals\" ")
-	f.Println("  meetnote export md team_notes.md  --category=team-standup")
 }
-
-
-
-
-
+// SHOW INTERACTIVE HELP
+func showInteractiveHelp() {
+	f.Println("📖 Interactive Mode Help")
+	f.Println("========================")
+	f.Println()
+	f.Println("Available commands:")
+	f.Println("  start <title>    Start a new transcription session")
+	f.Println("  stop             Stop the current transcription session")
+	f.Println("  status           Show current transcription status")
+	f.Println("  sessions         List all past meeting sessions")
+	f.Println("  help             Show this help menu")
+	f.Println("  quit / exit      Leave interactive mode")
+	f.Println()
+	f.Println("Tips:")
+	f.Println(" • You don’t need to type 'meetnote' before commands here.")
+	f.Println(" • Example: just type 'start Team Meeting' to begin.")
+}
