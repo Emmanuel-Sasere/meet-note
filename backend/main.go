@@ -9,53 +9,43 @@ import (
 	"os"
 	"strings"
 	"time"
-	"net/http"
+	 "github.com/alphacep/vosk-api/go"
+
 
 )
 
 
 const version = "3.0.0"
 
+var voskModel *vosk.Model
 
 
-func handleStartWebServer() {
-    f.Println("🌐 Starting web server at http://localhost:8080")
-
-    mux := http.NewServeMux()
-
-    // API endpoints
-    mux.HandleFunc("/api/status", handleAPIStatus)
-			f.Println("🌐 Starting web server...")
-	f.Println("This will run the web dashboard alongside transcription")
-	f.Println()
-	
-	// Start web server (this would integrate with the web UI from earlier)
-	// For now, just show a message
-	f.Println("Web server would start here - integrating with dashboard")
-	f.Println("Access at: http://localhost:8080")
-
-    // TODO: add more routes (sessions, notes, etc.)
-
-    // Start server with CORS middleware
-    if err := http.ListenAndServe(":8080", corsMiddleware(mux)); err != nil {
-        l.Fatalf("❌ Failed to start server: %v", err)
-    }
-
-		
+func loadSpeechModel() error {
+	var err error 
+	voskModel, err = vosk.NewModel("models/vosk-model-small-en-us-0.15")
+	if err != nil {
+		return err
+	}
+	return nil
 }
-
 
 func main(){
 	f.Println("===========================================")
 	f.Println("🎙️ MeetNote Version 3 - Live Transcription")
 	f.Println("===========================================")
-	f.Println()
+	f.Println()h
 	
 
 	//Initialize the system
 	err := initializeTranscriptionSystem()
 	if err != nil {
 		l.Fatalf("❌ Failed to initialize system: %v", err)
+	}
+
+	//Load speech recognition model
+	err = loadSpeechModel()
+	if err != nil {
+		l.Fatalf("❌ Failed to load speech model: %v", err)
 	}
 
 	//CHECK COMMAND LINE ARGUMENT
@@ -84,7 +74,9 @@ func main(){
 	case "interactive", "menu":
 		runInteractiveMode()
 	case "server":
-		handleStartWebServer()
+		if err := StartWebServer(); err != nil {
+        l.Fatalf("❌ Failed to start web server: %v", err)
+    	}
 	case "help", "--help", "-h":
 		showHelp()
 	case "version", "--version", "-v":

@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"os"
 )
 
 
@@ -51,7 +52,7 @@ type SystemStats struct {
 
 
 
-//STAT WEB SERVER
+
 // START WEB SERVER
 func StartWebServer() error {
 	l.Printf("🌐 Starting MeetNote web server on port %s", serverPort)
@@ -67,6 +68,8 @@ func StartWebServer() error {
 	mux.HandleFunc("/api/transcription/stop", handleAPIStop)
 	mux.HandleFunc("/api/notes", handleAPINotes)
 	mux.HandleFunc("/api/export", handleAPIExport)
+	mux.HandleFunc("/api/download/", handleAPIDownload)
+	mux.HandleFunc("/api/transcribe", transcribeHandler)
 
 	// REAL-TIME ROUTE
 	mux.HandleFunc("/api/live", handleAPILive)
@@ -89,7 +92,27 @@ func StartWebServer() error {
 
 //API ENDPOINTS
 
+// Transcribe handler
+func transcribeHandler(w http.ResponseWriter, r *http.Request) {
+	file, _, err := r.FormFile("audio")
+	if err != nil {
+		http.Error(w, "failed to read audio", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+	data, err := io.ReadAll(file)
+	if err != nil {
+		http.Error(w, "failed to read audio data", http.StatusInternalServerError)
+	}
+	rec, _ := vosk.NewRecognizer(voskModel, 16000.0)
+	defer rec.Free()
 
+	rec.AcceptWaveform(data)
+	result := rec.FinalResult()
+
+	w.Header().set("content-type", "application/json")
+	w.write([]byte(result))
+}
 //GET SYSTEM STATUS
 //Return current transcription status and recent activity
 func handleAPIStatus(w http.ResponseWriter, r *http.Request) {
@@ -389,6 +412,32 @@ liveData := map[string]interface{}{
 sendAPISuccess(w, "Live data retrieved", liveData)
 
 
+}
+
+
+// DOWNLOAD ENDPOINT - Serves exported files for download
+func handleAPIDownload(w http.ResponseWriter, r *http.Request) {
+    // Extract filename from URL
+    parts := strings.Split(r.URL.Path, "/")
+    filename := parts[len(parts)-1]
+    
+    // Security: prevent directory traversal
+    if strings.Contains(filename, "..") {
+        http.Error(w, "Invalid filename", http.StatusBadRequest)
+        return
+    }
+    
+    // Read file
+    data, err := os.ReadFile(filename)
+    if err != nil {
+        http.Error(w, "File not found", http.StatusNotFound)
+        return
+    }
+    
+    // Set download headers
+    w.Header().Set("Content-Disposition", f.Sprintf("attachment; filename=%s", filename))
+    w.Header().Set("Content-Type", "application/octet-stream")
+    w.Write(data)
 }
 
 //STATIC FILE HANDLER
