@@ -3,12 +3,16 @@ package main
 import (
 	"encoding/json"
 	f "fmt"
+	"io"
 	l "log"
 	"net/http"
+	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
-	"os"
+
+	vosk "github.com/alphacep/vosk-api/go"
 )
 
 
@@ -94,25 +98,79 @@ func StartWebServer() error {
 
 // Transcribe handler
 func transcribeHandler(w http.ResponseWriter, r *http.Request) {
-	file, _, err := r.FormFile("audio")
-	if err != nil {
-		http.Error(w, "failed to read audio", http.StatusBadRequest)
-		return
-	}
-	defer file.Close()
-	data, err := io.ReadAll(file)
-	if err != nil {
-		http.Error(w, "failed to read audio data", http.StatusInternalServerError)
-	}
-	rec, _ := vosk.NewRecognizer(voskModel, 16000.0)
-	defer rec.Free()
+    // Parse uploaded file
+    file, header, err := r.FormFile("file")
+    if err != nil {
+        http.Error(w, "Failed to read audio file", http.StatusBadRequest)
+        return
+    }
+    defer file.Close()
+		f.Printf("🎧 Received upload: %s (%d bytes)\n", header.Filename, header.Size)
 
-	rec.AcceptWaveform(data)
-	result := rec.FinalResult()
+    // Create temp files
+    inputFile, err := os.CreateTemp("", "input-*.webm")
+    if err != nil {
+        http.Error(w, "Failed to create temp input file", http.StatusInternalServerError)
+        return
+    }
+    defer os.Remove(inputFile.Name())
 
-	w.Header().set("content-type", "application/json")
-	w.write([]byte(result))
+    _, err = io.Copy(inputFile, file)
+    inputFile.Close()
+    if err != nil {
+        http.Error(w, "Failed to save uploaded audio", http.StatusInternalServerError)
+        return
+    }
+		f.Printf("✅ Saved uploaded file to: %s\n", inputFile.Name())
+
+    // Convert WebM → WAV (mono, 16kHz)
+    outputFile, err := os.CreateTemp("", "output-*.wav")
+    if err != nil {
+        http.Error(w, "Failed to create temp output file", http.StatusInternalServerError)
+        return
+    }
+    defer os.Remove(outputFile.Name())
+    outputFile.Close()
+		
+
+   cmd := exec.Command(
+    "ffmpeg",
+    "-y",
+    "-i", inputFile.Name(),
+    "-ar", "16000",
+    "-ac", "1",
+    "-f", "wav",
+    outputFile.Name(),
+)
+output, err := cmd.CombinedOutput()
+if err != nil {
+    f.Printf("ffmpeg error: %s\n", string(output))
+    sendAPIError(w, f.Sprintf("ffmpeg failed: %v - %s", err, string(output)), http.StatusInternalServerError)
+    return
 }
+ f.Printf("✅ ffmpeg successfully converted to: %s\n", outputFile.Name())
+
+    // Read the converted WAV file
+    wavData, err := os.ReadFile(outputFile.Name())
+    if err != nil {
+        http.Error(w, "Failed to read converted audio", http.StatusInternalServerError)
+        return
+    }
+
+    // Feed it to Vosk
+    rec, _ := vosk.NewRecognizer(voskModel, 16000.0)
+    defer rec.Free()
+
+    rec.AcceptWaveform(wavData)
+    result := rec.FinalResult()
+    f.Printf("📝 Transcription done for %s\n", header.Filename)
+    w.Header().Set("Content-Type", "application/json")
+    w.Write([]byte(result))
+
+		f.Printf("ffmpeg error: %s\n", string(output))
+}
+
+
 //GET SYSTEM STATUS
 //Return current transcription status and recent activity
 func handleAPIStatus(w http.ResponseWriter, r *http.Request) {
@@ -175,33 +233,75 @@ func handleAPIStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 
+
 //GET ALL SESSIONS
-func handleAPISessions(w http.ResponseWriter, r *http.Request)  {
-	if r.Method != "GET" {
-		sendAPIError(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	db, err := LoadNotesDB()
-	if err != nil {
-		sendAPIError(w, "Failed to load sessions", http.StatusInternalServerError)
-		return
-	}
+func handleAPISessions(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case "GET":
+		// ✅ Existing code to list sessions
+		db, err := LoadNotesDB()
+		if err != nil {
+			sendAPIError(w, "Failed to load sessions", http.StatusInternalServerError)
+			return
+		}
 
+		// Reverse order (newest first)
+		sessions := make([]MeetingSession, len(db.Sessions))
+		for i, j := 0, len(db.Sessions)-1; i <= j; i, j = i+1, j-1 {
+			sessions[i], sessions[j] = db.Sessions[j], db.Sessions[i]
+		}
+		sendAPISuccess(w, "Sessions retrieved successfully", sessions)
 
-	//Return sessions in reverse chronological order (newest first)
-	sessions := make([]MeetingSession, len(db.Sessions))
-	for i,j := 0, len(db.Sessions)-1; i <= j; i,j = i+1, j-1 {
-		sessions[i], sessions[j] = db.Sessions[j], db.Sessions[i]
+	case "POST":
+		// ✅ New code to create a new session
+		var req struct {
+			Title string `json:"title"`
+			Text  string `json:"text"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			sendAPIError(w, "Invalid JSON payload", http.StatusBadRequest)
+			return
+		}
+
+		db, err := LoadNotesDB()
+		if err != nil {
+			sendAPIError(w, "Failed to load DB", http.StatusInternalServerError)
+			return
+		}
+
+		newSession := MeetingSession{
+			ID:          generateSessionID(), // you can use uuid.NewString() if available
+			Title:       req.Title,
+			StartTime:   time.Now(),
+			Duration:    0,
+			Text:       req.Text,
+			Status:      "completed",
+			TotalWords:  len(strings.Fields(req.Text)),
+			KeyPoints:   []string{}, // can be processed later
+			ActionItems: []string{},
+		}
+
+		// Append to DB and save
+		db.Sessions = append(db.Sessions, newSession)
+		if err := SaveNotesDB(db); err != nil {
+			sendAPIError(w, "Failed to save session", http.StatusInternalServerError)
+			return
+		}
+
+		sendAPISuccess(w, "Session saved successfully", newSession)
+
+	default:
+		sendAPIError(w, "Method not allowed. Use GET or POST.", http.StatusMethodNotAllowed)
 	}
-	sendAPISuccess(w, "Sessions retrieved successfully", sessions)
 }
+
 
 
 
 // GET SPECIFIC SESSION DETAILS
 func handleAPISession(w http.ResponseWriter, r *http.Request){
 	if r.Method != "GET"{
-		sendAPIError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		sendAPIError(w, "Method not allowed, Please use GET Method", http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -225,8 +325,10 @@ func handleAPISession(w http.ResponseWriter, r *http.Request){
 
 	var session *MeetingSession
 	for _, s := range db.Sessions{
+
 		if s.ID == sessionID {
 			session = &s
+			l.Printf("DEBUG Session found: %+v\n", session)
 			break
 		}
 	}
@@ -245,22 +347,24 @@ func handleAPISession(w http.ResponseWriter, r *http.Request){
 
 	//Build detailed session response
 	sessionDetails := map[string]interface{}{
-		"session": session,
-		"notes": sessionNotes,
-		"stats": map[string]interface{}{
-			"total_notes":  len(sessionNotes),
-			"transcript_notes": countTranscriptNotes(sessionNotes),
-			"manual_notes":   len(sessionNotes) - countTranscriptNotes(sessionNotes),
-		},
-	
-	}
-	sendAPISuccess(w, "Session details retrieved successfully", sessionDetails)
+	"id":       session.ID,
+	"title":    session.Title,
+	"text":     session.Text, 
+	"notes":    sessionNotes,
+	"stats": map[string]interface{}{
+		"total_notes":       len(sessionNotes),
+		"transcript_notes":  countTranscriptNotes(sessionNotes),
+		"manual_notes":      len(sessionNotes) - countTranscriptNotes(sessionNotes),
+	},
+}
+
+sendAPISuccess(w, "Session details retrieved successfully", sessionDetails)
 }
 
 //STARAT TRANSCRIPTION VIA API
 func handleAPIStart(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
-		sendAPIError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		sendAPIError(w, "Method not allowed, Please use POST Method", http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -293,7 +397,7 @@ sendAPISuccess(w, "Transcription started successfully", session)
 //STOP TRANSCRIPTION VIA API
 func handleAPIStop(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
-		sendAPIError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		sendAPIError(w, "Method not allowed, Please use POST Method", http.StatusMethodNotAllowed)
 		return
 	}
 	err := StopTranscriptionSession()
@@ -309,7 +413,7 @@ func handleAPIStop(w http.ResponseWriter, r *http.Request) {
 //GET NOTES
 func handleAPINotes(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET"{
-		sendAPIError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		sendAPIError(w, "Method not allowed,Please use GET Method", http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -349,7 +453,7 @@ func handleAPINotes(w http.ResponseWriter, r *http.Request) {
 
 func handleAPIExport(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
-		sendAPIError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		sendAPIError(w, "Method not allowed, Please use POST Method", http.StatusMethodNotAllowed)
 	}
 
 
@@ -391,7 +495,7 @@ func handleAPIExport(w http.ResponseWriter, r *http.Request) {
 //This provides real-time updates for the web dashboard
 func handleAPILive(w http.ResponseWriter, r *http.Request){
 	if r.Method != "GET" {
-		sendAPIError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		sendAPIError(w, "Method not allowed, Please use GET Method", http.StatusMethodNotAllowed)
 		return
 	}
 

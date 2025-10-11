@@ -9,19 +9,18 @@ import (
 	"os"
 	"strings"
 	"time"
-	 "github.com/alphacep/vosk-api/go"
 
-
+	vosk "github.com/alphacep/vosk-api/go"
 )
 
 
 const version = "3.0.0"
 
-var voskModel *vosk.Model
+var voskModel *vosk.VoskModel
 
-
+// loadSpeechModel loads the Vosk speech recognition model from the specified path
 func loadSpeechModel() error {
-	var err error 
+	var err error
 	voskModel, err = vosk.NewModel("models/vosk-model-small-en-us-0.15")
 	if err != nil {
 		return err
@@ -33,7 +32,7 @@ func main(){
 	f.Println("===========================================")
 	f.Println("🎙️ MeetNote Version 3 - Live Transcription")
 	f.Println("===========================================")
-	f.Println()h
+	f.Println()
 	
 
 	//Initialize the system
@@ -43,10 +42,15 @@ func main(){
 	}
 
 	//Load speech recognition model
-	err = loadSpeechModel()
+err = loadSpeechModel()
 	if err != nil {
-		l.Fatalf("❌ Failed to load speech model: %v", err)
+		l.Fatalf("Error loading model: %v", err)
 	}
+	defer voskModel.Free()
+
+	l.Println("✅ Model loaded successfully!")
+
+
 
 	//CHECK COMMAND LINE ARGUMENT
 	if len(os.Args) < 2 {

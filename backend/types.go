@@ -27,6 +27,7 @@ type MeetingSession struct {
 	StartTime time.Time `json:"start_time"`
 	EndTime  *time.Time `json:"end_time"`
 	Status   string   `json:"status"` 
+	Text        string    `json:"text"`
 
 	//TRANSCRIPTION SETTINGS
 	Language    string `json:"language"` //Speech recognition languge ("en", "jp")

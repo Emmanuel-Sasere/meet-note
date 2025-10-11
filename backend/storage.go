@@ -17,29 +17,43 @@ const (
 
 
 func LoadNotesDB() (*NotesDB, error) {
-data, err := os.ReadFile(dataFile)
-if err != nil {
-	if os.IsNotExist(err){
-		return &NotesDB{Notes: []Note{}}, nil
-	}
+    dataFile := "notes.json"
 
-	return nil, f.Errorf("failed to read notes file: %w", err)
-}
-var db NotesDB
+    data, err := os.ReadFile(dataFile)
+    if err != nil {
+        if os.IsNotExist(err) {
+            // Create a new empty DB file
+            defaultDB := &NotesDB{Sessions: []MeetingSession{}, Notes: []Note{}}
+            SaveNotesDB(defaultDB)
+            return defaultDB, nil
+        }
+        return nil, err
+    }
 
-err = json.Unmarshal(data, &db)
-if err != nil {
-	return nil, f.Errorf("failed to parse notes file: %w", err)
-}
-return &db, nil
+    if len(data) == 0 {
+        // Handle empty file
+        defaultDB := &NotesDB{Sessions: []MeetingSession{}, Notes: []Note{}}
+        SaveNotesDB(defaultDB)
+        return defaultDB, nil
+    }
 
+    var db NotesDB
+    if err := json.Unmarshal(data, &db); err != nil {
+        // Handle corrupted or invalid JSON
+        defaultDB := &NotesDB{Sessions: []MeetingSession{}, Notes: []Note{}}
+        SaveNotesDB(defaultDB)
+        return defaultDB, nil
+    }
+
+    return &db, nil
 }
+
 
 
 // SaveNotes save the entire notes database to file
  
 func SaveNotesDB(db *NotesDB) error {
-	data, err := json.MarshalIndent(db, "", " ")
+	data, err := json.MarshalIndent(db, "", "  ")
 	if err != nil {
 		return f.Errorf("failed to write notes file: %w", err)
 	}
