@@ -37,7 +37,7 @@ import (
 			return "", fmt.Errorf("failed to encode request body: %v", err)
 		}
 
-		url :=  "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=" + apiKey
+		url :=  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + apiKey
 
 		req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 
@@ -123,7 +123,7 @@ import (
 				return "", fmt.Errorf("failed to marshal JSON: %v", err)
 			}
 			//Send to Gemini API
-			url := "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=" + apiKey
+			url := "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + apiKey
 			resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
 			if err != nil {
 				return "", fmt.Errorf("failed to send request: %v", err)
