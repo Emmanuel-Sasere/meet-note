@@ -2,6 +2,7 @@ package summarization
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -27,24 +28,22 @@ import (
 			},
 		}
 			
+			apiKey := config.GetGeminiKey()
+		if apiKey == "" {
+			return "", fmt.Errorf("GEMINI_API_KEY environment variable is not set")
+		}
 		jsonData, err := json.Marshal(reqBody)
 		if err != nil {
 			return "", fmt.Errorf("failed to encode request body: %v", err)
 		}
 
-		req, err := http.NewRequest("POST", "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent", bytes.NewBuffer(jsonData))
+		url :=  "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=" + apiKey
+
+		req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 
 		if err != nil {
 			return "", fmt.Errorf("failed to create request: %v", err)
 		}
-
-		// Set HEADERS
-		apiKey := config.GetGeminiKey()
-		if apiKey == "" {
-			return "", fmt.Errorf("GEMINI_API_KEY environment variable is not set")
-		}
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer "+apiKey)
 
 		//Make the request
 		client := &http.Client{Timeout: 30 * time.Second}
@@ -66,9 +65,9 @@ import (
 				if retryAfter != "" {
 					retryAfter = "15 minutes" // fallback if no header
 				}
-				fmt.Errorf("Gemini API limit reached. Please wait %s before retrying.", retryAfter)
+				return "", fmt.Errorf("gemini API limit reached. Please wait %s before retrying", retryAfter)
 			}
-			return "", fmt.Errorf("Gemini API error (%d): %s",resp.StatusCode, string(body))
+			return "", fmt.Errorf("gemini API error (%d): %s",resp.StatusCode, string(body))
 		}
 
 		var result GeminiResponse
@@ -88,9 +87,69 @@ import (
 
 
 
-		func TranscribeWithGemini(rawText string) (string, error){
+		func TranscribeWithGemini(audioFilePath string) (string, error){
+			//Load Gemini API Key
+			apiKey := config.GetGeminiKey()
+			if apiKey == "" {
+				return "", fmt.Errorf("GEMINI_API_KEY environment variable is not set")
+			}
+			//Read audio file
+			audioData, err := os.ReadFile(audioFilePath)
+			if err != nil {
+				return "", fmt.Errorf("failed to read audio file: %v", err)
+			}
+			//Convert audio to base64
+			encodedAudio := base64.StdEncoding.EncodeToString(audioData)
 			//Prepare request body
+			requestBody := GeminiRequest{
+				Contents: []GeminiContent{
+					{
+						Parts: []GeminiPart{
+							{Text: "Transcribe this audio into text, See if you can get name of speakers and label them accordingly, also ensure neat notes:"}, 
+							{
+								InlineData: &InlineData{
+								MimeType: "audio/mp3", 
+								Data: encodedAudio,
+						},
+						},
+						},
+					},
+				},
+			}
+
+			//Turn request body to JSON
+			jsonData, err := json.Marshal(requestBody)
+			if err != nil {
+				return "", fmt.Errorf("failed to marshal JSON: %v", err)
+			}
 			//Send to Gemini API
-			//Parse response
+			url := "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=" + apiKey
+			resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
+			if err != nil {
+				return "", fmt.Errorf("failed to send request: %v", err)
+			}
+			defer resp.Body.Close()
+
+			// Read response body
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			//Handle http errors
+			if resp.StatusCode != http.StatusOK {
+				return "", fmt.Errorf("gemini API error (%d): %s", resp.StatusCode, string(bodyBytes))
+			}
+
+			//Decode the API response
+			var geminiResp GeminiResponse
+		if 	err = json.Unmarshal(bodyBytes, &geminiResp); err != nil {
+				return "", fmt.Errorf("failed to decode response: %v", err)
+			}
+
+
+
+			//Extract transcript text
+			if len(geminiResp.Candidates) > 0 && len(geminiResp.Candidates[0].Content.Parts) > 0 {
+				return geminiResp.Candidates[0].Content.Parts[0].Text, nil
+			}
+
 			//Return cleaned transcript
+			return "", fmt.Errorf("invalid response: missing text content")
 		}

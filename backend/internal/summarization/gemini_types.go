@@ -10,6 +10,7 @@ type GeminiContent struct {
 
 type GeminiPart struct {
 	Text string `json:"text"`
+	InlineData *InlineData `json:"inlineData,omitempty"`
 }
 
 type GeminiResponse struct {
@@ -18,4 +19,9 @@ type GeminiResponse struct {
 
 type GeminiCandidate struct {
 	Content GeminiContent `json:"content"`
+}
+
+type InlineData struct {
+    MimeType string `json:"mimeType"`
+    Data     string `json:"data"`
 }

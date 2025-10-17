@@ -2,15 +2,36 @@ package main
 
 import (
 	"fmt"
-	"noted/api"
+	"log"
+	"net/http"
 	"noted/internal/config"
+	"noted/internal/routes"
 )
 
 
-
-
 func main() {
-	key := config.GetGeminiKey()
-	fmt.Println("Gemini API Key:", key[:8]+"...") 
-	api.StartServer()
+
+	//Load config (like API Key)
+	if config.GetGeminiKey() == "" {
+		log.Fatal("❌ GEMINI_API_KEY is not set. Please set it in your environment variables.")
+	}
+
+
+	//Register all routes from internal/routes
+	router := routes.RegisterRoutes()
+
+
+
+
+		//Define server Port
+	port := ":8080"
+
+	//Start Http server
+	fmt.Println(" Server is running on port " + port)
+	if err := http.ListenAndServe(
+	port, router); err != nil {
+		log.Fatalf("Failed to start server: %v", err)
+	}
+	
+
 }
