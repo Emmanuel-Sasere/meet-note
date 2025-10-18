@@ -25,6 +25,9 @@ func RegisterRoutes() *mux.Router {
 	router.HandleFunc("/transcribe", handleTranscribe).Methods("POST")
 
 	router.HandleFunc("/summarize", handleSummarize).Methods("POST")
+	router.HandleFunc("/status", sessionsHandler).Methods("GET")
+	
+
 
 
 	return router
@@ -74,3 +77,5 @@ func handleTranscribe(w http.ResponseWriter, r *http.Request){
 	}
 	w.Write([]byte(output))
 }
+
+

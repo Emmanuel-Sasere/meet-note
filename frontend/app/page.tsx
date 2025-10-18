@@ -60,7 +60,7 @@ const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   // API BASE URL - connects to Go backend
   const API_BASE = process.env.NODE_ENV === 'production' 
     ? '/api' 
-    : 'http://localhost:8080/api';
+    : 'http://localhost:8080';
 
   // LOAD DATA ON PAGE START
   useEffect(() => {
