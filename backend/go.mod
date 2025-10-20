@@ -1,7 +1,7 @@
-module github.com/Emmanuel-Sasere/meet-note
+module noted
 
 go 1.24.5
 
-require github.com/alphacep/vosk-api/go v0.3.42
+require github.com/gorilla/mux v1.8.1
 
-replace github.com/alphacep/vosk-api/go => /Users/noted/vosk-api/go
+require github.com/joho/godotenv v1.5.1 // indirect

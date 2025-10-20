@@ -1,80 +1,50 @@
-"use client";
-import { useState, useEffect } from 'react';
+"use client"
+import { useState, useEffect, useRef } from 'react';
 import { 
   Mic, 
-  MicOff, 
-  Play, 
   Square, 
-  Clock, 
-  FileText, 
-  Users, 
-  BarChart3,
+  Upload,
   Download,
-  RefreshCw 
+  FileText,
+  Clock,
+  AlertCircle,
+  X,
+  Check,
+  Video
 } from 'lucide-react';
+import jsPDF from 'jspdf';
 
-// TYPES (simplified from Go backend)
-interface Session {
-  id: string;
-  title: string;
-  start_time: string;
-  duration: number;
-  status: 'active' | 'completed';
-  total_words: number;
-  key_points: string[];
-  action_items: string[];
-}
-
-interface SystemStats {
-  total_sessions: number;
-  total_words: number;
-  avg_words_per_session: number;
-}
-
-export default function Dashboard() {
-  // STATE MANAGEMENT
+export default function MeetNote() {
   const [isRecording, setIsRecording] = useState(false);
-  const [isConnected, setIsConnected] = useState(false);
-  const [currentSession, setCurrentSession] = useState<Session | null>(null);
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
-  const [showExportModal, setShowExportModal] = useState(false);
-const [selectedFormat, setSelectedFormat] = useState<"txt" | "pdf" | "docx">("txt");
-const [isProcessing, setIsProcessing] = useState(false);
-
-
-
-  const [stats, setStats] = useState<SystemStats>({
-    total_sessions: 0,
-    total_words: 0,
-    avg_words_per_session: 0
-  });
-  const [meetingTitle, setMeetingTitle] = useState('');
   const [recordingTime, setRecordingTime] = useState(0);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [transcript, setTranscript] = useState('');
+  const [summary, setSummary] = useState('');
+  const [error, setError] = useState('');
+  const [showWarning, setShowWarning] = useState(true);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [selectedFormat, setSelectedFormat] = useState<'txt' | 'pdf' | 'docx'>('txt');
+  const [processingStep, setProcessingStep] = useState('');
+  
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
 
-  // API BASE URL - connects to Go backend
-  const API_BASE = process.env.NODE_ENV === 'production' 
-    ? '/api' 
-    : 'http://localhost:8080/api';
-
-  // LOAD DATA ON PAGE START
+  // Prevent refresh when there's data
   useEffect(() => {
-    loadSystemStatus();
-    loadSessions();
-    
-    // Auto-refresh every 10 seconds
-    const interval = setInterval(() => {
-      if (isRecording) {
-        loadSystemStatus();
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (transcript || summary) {
+        e.preventDefault();
+        e.returnValue = 'You have unsaved transcripts. Are you sure you want to leave? Your data will be lost.';
+        return e.returnValue;
       }
-    }, 10000);
+    };
 
-    return () => clearInterval(interval);
-  }, [isRecording]);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [transcript, summary]);
 
-  // RECORDING TIMER
- useEffect(() => {
+  // Recording timer
+  useEffect(() => {
     let interval: NodeJS.Timeout;
     if (isRecording) {
       interval = setInterval(() => setRecordingTime((prev) => prev + 1), 1000);
@@ -82,519 +52,602 @@ const [isProcessing, setIsProcessing] = useState(false);
     return () => clearInterval(interval);
   }, [isRecording]);
 
-
-
-  // API FUNCTIONS
-  async function loadSystemStatus() {
-    try {
-      const response = await fetch(`${API_BASE}/status`);
-      const result = await response.json();
-      
-      if (result.success) {
-        setIsConnected(true);
-        setStats(result.data.system_stats);
-        
-        // Check if recording is active
-        if (result.data.is_recording && result.data.current_session) {
-          setCurrentSession(result.data.current_session);
-          setIsRecording(true);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load status:', error);
-      setIsConnected(false);
-    }
-  }
-
-  async function loadSessions() {
-    try {
-      const response = await fetch(`${API_BASE}/sessions`);
-      const result = await response.json();
-      
-      if (result.success) {
-        setSessions(result.data || []);
-      }
-    } catch (error) {
-      console.error('Failed to load sessions:', error);
-    }
-  }
-
-// 🎙️ START RECORDING
-const handleStartRecording = async () => {
-  if (!meetingTitle.trim()) {
-    alert("Please enter a meeting title");
-    return;
-  }
-
-  try {
-    const displayStream = await navigator.mediaDevices.getDisplayMedia({
-      video: true,
-      audio: true,
-    });
-    console.log("🖥️ Got display stream:", displayStream.getTracks());
-
-    const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    console.log("🎤 Got mic stream:", micStream.getTracks());
-
-    const combinedStream = new MediaStream([
-      ...displayStream.getAudioTracks(),
-      ...micStream.getAudioTracks(),
-    ]);
-    console.log("🎧 Combined stream tracks:", combinedStream.getTracks());
-
-    const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-      ? "audio/webm;codecs=opus"
-      : "audio/webm";
-
-    const recorder = new MediaRecorder(combinedStream, { mimeType });
-    const chunks: Blob[] = []; // ✅ Local variable, not React state
-
-    recorder.ondataavailable = (event) => {
-      if (event.data.size > 0) {
-        chunks.push(event.data);
-        console.log("🎵 Captured chunk size:", event.data.size);
-      }
-    };
-
-    recorder.onstop = async () => {
-      console.log("🎤 Recorder stopped. Gathering chunks...");
-      if (chunks.length === 0) {
-        console.warn("⚠️ No audio chunks captured. Nothing to upload.");
-        return;
-      }
-
-      const blob = new Blob(chunks, { type: "audio/webm;codecs=opus" });
-      console.log(`🎧 Recorded blob type: ${blob.type}, size: ${blob.size} bytes`);
-
-      const formData = new FormData();
-      formData.append("file", blob, "meeting_audio.webm");
-
-      try {
-        console.log("⬆️ Uploading to backend...");
-        const res = await fetch(`${API_BASE}/transcribe`, {
-          method: "POST",
-          body: formData,
-        });
-
-        const data = await res.json();
-        console.log("🧠 Transcription result:", data);
-
-if (data.text) {
-  try {
-    const res = await fetch(`${API_BASE}/sessions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: meetingTitle || "Untitled Meeting",
-        text: data.text,
-        status: "completed",
-      }),
-    });
-
-    const saved = await res.json();
-
-    if (saved.success && saved.data?.id) {
-      console.log("✅ Saved session ID:", saved.data.id);
-      setCurrentSessionId(saved.data.id);
-    } else {
-      console.error("⚠️ Failed to get session ID:", saved);
-    }
-
-    await loadSessions();
-    console.log("💾 Session saved successfully.");
-    setIsProcessing(false);
-  } catch (saveError) {
-    console.error("Error saving session:", saveError);
-  }
-}
-
-
-      } catch (err) {
-        console.error("Error uploading audio:", err);
-      }
-    };
-
-    recorder.start();
-    setMediaRecorder(recorder);
-    setIsRecording(true);
-    setRecordingTime(0);
-    console.log("✅ Recording started with", mimeType);
-  } catch (error) {
-    console.error("Error starting recording:", error);
-    alert("Could not start recording. Please allow permissions.");
-  }
-};
-
-// ⏹️ STOP RECORDING
-const handleStopRecording = () => {
-  if (mediaRecorder && isRecording) {
-    console.log("⏹️ Stopping recorder...");
-    setIsProcessing(true);
-    mediaRecorder.stop();
-    setIsRecording(false);
-  }
-};
-
-
-// 💾 EXPORT TEXT
-const handleExportSession = async (sessionId?: string) => {
-  const id = sessionId || currentSessionId;
-  if (!id) {
-    alert("No session selected");
-    return;
-  }
-
-  try {
-    const res = await fetch(`${API_BASE}/session/${id}`);
-    const data = await res.json();
-
-    if (!data.success || !data.data?.text) {
-      alert("Could not find session transcript");
-      return;
-    }
-
-    const { title, text } = data.data;
-    const fileName = `${title || "session"}.${selectedFormat}`;
-
-    let blob;
-
-    if (selectedFormat === "txt") {
-      blob = new Blob([text], { type: "text/plain" });
-    } else if (selectedFormat === "pdf") {
-      // simple text-to-pdf generator
-      const pdfContent = `
-        ${title || "Session Transcript"}
-
-        ${text}
-      `;
-      blob = new Blob([pdfContent], { type: "application/pdf" });
-    } else if (selectedFormat === "docx") {
-      const docxContent = `
-        <html xmlns:o='urn:schemas-microsoft-com:office:office' 
-              xmlns:w='urn:schemas-microsoft-com:office:word' 
-              xmlns='http://www.w3.org/TR/REC-html40'>
-          <head><meta charset='utf-8'><title>${title}</title></head>
-          <body><h1>${title}</h1><p>${text}</p></body>
-        </html>`;
-      blob = new Blob([docxContent], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
-    }
-
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = fileName;
-    a.click();
-    URL.revokeObjectURL(url);
-
-    setShowExportModal(false);
-    console.log("📄 Exported:", fileName);
-  } catch (err) {
-    console.error("Export failed:", err);
-  }
-};
-
-
-
-
-
-  // UTILITY FUNCTIONS
-  function formatTime(seconds: number): string {
+  // Format time as MM:SS
+  const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  }
+  };
 
-  function formatDate(dateString: string): string {
-    return new Date(dateString).toLocaleDateString() + ' ' + 
-           new Date(dateString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  }
+  // Start recording
+  const handleStartRecording = async () => {
+    try {
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: true,
+      });
 
+      const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
+      const combinedStream = new MediaStream([
+        ...displayStream.getAudioTracks(),
+        ...micStream.getAudioTracks(),
+      ]);
 
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : "audio/webm";
 
-  // RENDER DASHBOARD
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      <div className="container mx-auto px-4 py-8">
+      const recorder = new MediaRecorder(combinedStream, { mimeType });
+      chunksRef.current = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        await uploadAndTranscribe(blob, 'audio');
         
-        {/* HEADER */}
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-2">
-                🎙️ MeetNote v3
-              </h1>
-              <p className="text-gray-600">Live Meeting Transcription</p>
-            </div>
-            
-            <div className="flex items-center gap-4">
-              {/* Connection Status */}
-              <div className="flex items-center gap-2">
-                <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500 animate-pulse-slow' : 'bg-red-500'}`}></div>
-                <span className="text-sm text-gray-600">
-                  {isConnected ? 'Connected' : 'Disconnected'}
-                </span>
+        displayStream.getTracks().forEach(track => track.stop());
+        micStream.getTracks().forEach(track => track.stop());
+      };
+
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setIsRecording(true);
+      setRecordingTime(0);
+      setError('');
+    } catch (err) {
+      console.error("Error starting recording:", err);
+      setError("Could not start recording. Please allow permissions.");
+    }
+  };
+
+  // Stop recording
+  const handleStopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  };
+
+  // Handle file upload (audio or video)
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const fileType = file.type.startsWith('video/') ? 'video' : 'audio';
+    await uploadAndTranscribe(file, fileType);
+    event.target.value = '';
+  };
+
+  // Upload and transcribe audio/video
+  const uploadAndTranscribe = async (fileBlob: Blob, fileType: 'audio' | 'video') => {
+    setIsProcessing(true);
+    setError('');
+    setProcessingStep(fileType === 'video' ? 'Extracting audio from video...' : 'Uploading audio...');
+
+    try {
+      const formData = new FormData();
+      formData.append("file", fileBlob, fileType === 'video' ? "video.mp4" : "audio.webm");
+      formData.append("type", fileType);
+
+      const response = await fetch("http://localhost:8080/transcribe", {
+        method: "POST",
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setTranscript(result.data.transcript);
+        setSummary(result.data.summary);
+        setProcessingStep('');
+      } else {
+        setError(result.error || "Processing failed");
+        setProcessingStep('');
+      }
+    } catch (err) {
+      console.error("Upload error:", err);
+      setError("Failed to upload or process file. Make sure the server is running.");
+      setProcessingStep('');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Download transcript and summary in selected format
+  const handleDownload = () => {
+    const timestamp = new Date().toISOString().slice(0, 10);
+    const fileName = `notes-${timestamp}`;
+    
+    if (selectedFormat === 'txt') {
+      downloadAsText(fileName);
+    } else if (selectedFormat === 'pdf') {
+      downloadAsPDF(fileName);
+    } else if (selectedFormat === 'docx') {
+      downloadAsDOCX(fileName);
+    }
+    
+    setShowExportModal(false);
+  };
+
+  // Download as plain text
+  const downloadAsText = (fileName: string) => {
+    const content = `NOTES
+${'='.repeat(80)}
+
+${transcript}
+
+${'='.repeat(80)}
+
+SUMMARY
+${'-'.repeat(80)}
+
+${summary}
+
+${'='.repeat(80)}
+Generated on: ${new Date().toLocaleString()}`;
+    
+    const blob = new Blob([content], { type: 'text/plain' });
+    downloadBlob(blob, `${fileName}.txt`);
+  };
+
+
+ // Download as PDF using jsPDF library
+const downloadAsPDF = (fileName: string) => {
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 20;
+  const maxWidth = pageWidth - (margin * 2);
+  let yPosition = margin;
+
+  // Helper function to add text with wrapping
+  const addWrappedText = (text: string, fontSize: number, isBold: boolean = false) => {
+    doc.setFontSize(fontSize);
+    if (isBold) {
+      doc.setFont('helvetica', 'bold');
+    } else {
+      doc.setFont('helvetica', 'normal');
+    }
+
+    const lines = doc.splitTextToSize(text, maxWidth);
+    
+    lines.forEach((line: string) => {
+      // Check if we need a new page
+      if (yPosition > pageHeight - margin) {
+        doc.addPage();
+        yPosition = margin;
+      }
+      
+      doc.text(line, margin, yPosition);
+      yPosition += fontSize * 0.5; // Line spacing
+    });
+  };
+
+  // Title
+  doc.setFillColor(37, 99, 235); // Blue
+  doc.rect(margin, yPosition, maxWidth, 15, 'F');
+  doc.setTextColor(255, 255, 255); // White text
+  doc.setFontSize(20);
+  doc.setFont('helvetica', 'bold');
+  doc.text('📋 Notes', margin + 5, yPosition + 10);
+  yPosition += 25;
+
+  // Reset text color
+  doc.setTextColor(0, 0, 0);
+
+  // Transcript Section
+  doc.setFontSize(16);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(75, 85, 99); // Gray
+  doc.text('Transcript', margin, yPosition);
+  yPosition += 10;
+
+  // Draw line under header
+  doc.setDrawColor(229, 231, 235);
+  doc.line(margin, yPosition, pageWidth - margin, yPosition);
+  yPosition += 8;
+
+  // Transcript content
+  doc.setTextColor(0, 0, 0);
+  addWrappedText(transcript, 10);
+  yPosition += 15;
+
+  // Summary Section
+  doc.setFontSize(16);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(75, 85, 99);
+  doc.text('Summary', margin, yPosition);
+  yPosition += 10;
+
+  // Draw line under header
+  doc.line(margin, yPosition, pageWidth - margin, yPosition);
+  yPosition += 8;
+
+  // Summary content (with background box)
+  const summaryStartY = yPosition;
+  doc.setFillColor(239, 246, 255); // Light blue background
+  
+  // Calculate summary height
+  doc.setFontSize(10);
+  const summaryLines = doc.splitTextToSize(summary, maxWidth - 10);
+  const summaryHeight = summaryLines.length * 5 + 10;
+  
+  doc.rect(margin, summaryStartY - 5, maxWidth, summaryHeight, 'F');
+  
+  // Add summary text
+  doc.setTextColor(0, 0, 0);
+  addWrappedText(summary, 10);
+  yPosition += 15;
+
+  // Footer
+  if (yPosition > pageHeight - 30) {
+    doc.addPage();
+    yPosition = margin;
+  }
+  
+  doc.setFontSize(8);
+  doc.setTextColor(107, 114, 128); // Gray
+  doc.setFont('helvetica', 'normal');
+  doc.text(
+    `Generated on: ${new Date().toLocaleString()} | Created with Noted`,
+    pageWidth / 2,
+    pageHeight - 15,
+    { align: 'center' }
+  );
+
+  // Save the PDF
+  doc.save(`${fileName}.pdf`);
+};
+
+  // Download as DOCX
+  const downloadAsDOCX = (fileName: string) => {
+    const htmlContent = `
+<html xmlns:o='urn:schemas-microsoft-com:office:office' 
+      xmlns:w='urn:schemas-microsoft-com:office:word' 
+      xmlns='http://www.w3.org/TR/REC-html40'>
+<head>
+  <meta charset='utf-8'>
+  <title>Notes</title>
+  <style>
+    body { font-family: 'Calibri', sans-serif; line-height: 1.6; padding: 40px; }
+    h1 { color: #2563eb; border-bottom: 3px solid #2563eb; padding-bottom: 10px; }
+    h2 { color: #4b5563; margin-top: 30px; border-bottom: 2px solid #e5e7eb; padding-bottom: 5px; }
+    .notes { background-color: #f9fafb; padding: 20px; border: 1px solid #e5e7eb; margin: 20px 0; white-space: pre-wrap; }
+    .summary { background-color: #eff6ff; padding: 20px; border-left: 4px solid #2563eb; margin: 20px 0; }
+    .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb; color: #6b7280; font-size: 0.9em; }
+  </style>
+</head>
+<body>
+  <h1>📋 Notes</h1>
+  
+  <h2>Transcript</h2>
+  <div class="notes">${transcript.replace(/\n/g, '<br>')}</div>
+  
+  <h2>Summary</h2>
+  <div class="summary">${summary.replace(/\n/g, '<br>')}</div>
+  
+  <div class="footer">
+    Generated on: ${new Date().toLocaleString()}<br>
+    Created with Noted
+  </div>
+</body>
+</html>`;
+    
+    const blob = new Blob([htmlContent], { 
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' 
+    });
+    downloadBlob(blob, `${fileName}.docx`);
+  };
+
+  // Helper function to trigger download
+  const downloadBlob = (blob: Blob, fileName: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // Clear all data
+  const handleClear = () => {
+    if (confirm('Are you sure? This will delete your transcript and summary.')) {
+      setTranscript('');
+      setSummary('');
+      setError('');
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50">
+      <div className="container mx-auto px-4 py-8 max-w-6xl">
+        
+        {/* Warning Banner */}
+        {showWarning && (
+          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 rounded-r-lg shadow-sm">
+            <div className="flex items-start">
+              <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5 mr-3 flex-shrink-0" />
+              <div className="flex-1">
+                <h3 className="text-sm font-semibold text-yellow-800 mb-1">
+                  Data Not Saved Permanently
+                </h3>
+                <p className="text-sm text-yellow-700">
+                  Your transcripts are stored in your browser only. If you refresh or close this page, all data will be lost. 
+                  Make sure to download your notes before leaving!
+                </p>
               </div>
-              
-              {/* Recording Status */}
-              {isRecording && (
-                <div className="flex items-center gap-2 bg-red-50 text-red-600 px-3 py-2 rounded-lg border border-red-200">
-                  <div className="w-2 h-2 bg-red-500 rounded-full animate-recording-pulse"></div>
-                  <span className="font-medium">Recording</span>
-                  <span className="font-mono">{formatTime(recordingTime)}</span>
-                </div>
-              )}
+              <button
+                onClick={() => setShowWarning(false)}
+                className="ml-3 text-yellow-600 hover:text-yellow-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
           </div>
-        </div>
-        {/* =================== */}
+        )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          {/* MAIN CONTROL PANEL */}
-          <div className="lg:col-span-2">
-            <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
-              <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
-                🎛️ Transcription Control
-              </h2>
-              
-              {!isRecording ? (
-                // START RECORDING PANEL
-                <div className="space-y-4">
+        {/* Header */}
+        <div className="bg-white rounded-2xl shadow-xl p-8 mb-8">
+          <div className="text-center">
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent mb-2">
+              🎙️ Noted
+            </h1>
+            <p className="text-gray-600">
+              Record or upload audio/video for instant transcription and summary
+            </p>
+          </div>
+        </div>
+
+        {/* Main Control Panel */}
+        <div className="bg-white rounded-2xl shadow-xl p-8 mb-8">
+          <h2 className="text-2xl font-semibold text-gray-800 mb-6 flex items-center gap-2">
+            🎛️ Record or Upload
+          </h2>
+
+          {!isRecording ? (
+            <div className="space-y-4">
+              {/* Start Recording Button */}
+              <button
+                onClick={handleStartRecording}
+                disabled={isProcessing}
+                className="w-full bg-gradient-to-r from-red-500 to-pink-500 hover:from-red-600 hover:to-pink-600 disabled:from-gray-300 disabled:to-gray-400 text-white font-semibold py-4 px-6 rounded-xl transition-all transform hover:scale-105 disabled:scale-100 shadow-lg flex items-center justify-center gap-3"
+              >
+                <Mic className="w-6 h-6" />
+                Start Recording Audio
+              </button>
+
+              {/* Divider */}
+              <div className="relative py-4">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-300"></div>
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-4 bg-white text-gray-500 font-medium">OR UPLOAD FILES</span>
+                </div>
+              </div>
+
+              {/* Upload Options */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Upload Audio */}
+                <label className="border-2 border-dashed border-indigo-300 hover:border-indigo-500 bg-indigo-50 hover:bg-indigo-100 rounded-xl py-6 px-6 transition-all cursor-pointer flex flex-col items-center gap-3">
+                  <Upload className="w-8 h-8 text-indigo-600" />
+                  <span className="text-gray-700 font-medium">Upload Audio</span>
+                  <span className="text-sm text-gray-500">MP3, WAV, WEBM, etc.</span>
+                  <input
+                    type="file"
+                    accept="audio/*"
+                    onChange={handleFileUpload}
+                    disabled={isProcessing}
+                    className="hidden"
+                  />
+                </label>
+
+                {/* Upload Video */}
+                <label className="border-2 border-dashed border-purple-300 hover:border-purple-500 bg-purple-50 hover:bg-purple-100 rounded-xl py-6 px-6 transition-all cursor-pointer flex flex-col items-center gap-3">
+                  <Video className="w-8 h-8 text-purple-600" />
+                  <span className="text-gray-700 font-medium">Upload Video</span>
+                  <span className="text-sm text-gray-500">MP4, MOV, AVI, etc.</span>
+                  <input
+                    type="file"
+                    accept="video/*"
+                    onChange={handleFileUpload}
+                    disabled={isProcessing}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+            </div>
+          ) : (
+            // Recording in Progress
+            <div className="space-y-6">
+              <div className="bg-red-50 border-2 border-red-200 rounded-xl p-6 text-center">
+                <div className="flex items-center justify-center gap-3 mb-4">
+                  <div className="w-4 h-4 bg-red-500 rounded-full animate-pulse"></div>
+                  <span className="text-2xl font-bold text-red-600">RECORDING</span>
+                </div>
+                <div className="flex items-center justify-center gap-2 text-gray-700">
+                  <Clock className="w-5 h-5" />
+                  <span className="text-3xl font-mono font-bold">{formatTime(recordingTime)}</span>
+                </div>
+              </div>
+
+              <button
+                onClick={handleStopRecording}
+                className="w-full bg-gray-800 hover:bg-gray-900 text-white font-semibold py-4 px-6 rounded-xl transition-all shadow-lg flex items-center justify-center gap-3"
+              >
+                <Square className="w-6 h-6" />
+                Stop Recording
+              </button>
+            </div>
+          )}
+
+          {/* Error Message */}
+          {error && (
+            <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-4">
+              <p className="text-red-700 text-sm">{error}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Processing Indicator */}
+        {isProcessing && (
+          <div className="bg-white rounded-2xl shadow-xl p-8 mb-8">
+            <div className="flex flex-col items-center justify-center gap-4">
+              <div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
+              <p className="text-lg font-medium text-gray-700">
+                {processingStep || 'Processing your file...'}
+              </p>
+              <p className="text-sm text-gray-500">This may take a minute depending on file length</p>
+            </div>
+          </div>
+        )}
+
+        {/* Results Section */}
+        {(transcript || summary) && !isProcessing && (
+          <div className="space-y-6">
+            {/* Action Buttons */}
+            <div className="flex gap-4">
+              <button
+                onClick={() => setShowExportModal(true)}
+                className="flex-1 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-semibold py-3 px-6 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2"
+              >
+                <Download className="w-5 h-5" />
+                Download Notes
+              </button>
+              <button
+                onClick={handleClear}
+                className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-3 px-6 rounded-xl transition-all flex items-center justify-center gap-2"
+              >
+                <X className="w-5 h-5" />
+                Clear All
+              </button>
+            </div>
+
+            {/* Transcript Card */}
+            {transcript && (
+              <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-200">
+                <h3 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+                  <FileText className="w-6 h-6" />
+                  Notes
+                </h3>
+                <div className="bg-gray-50 rounded-xl p-6 max-h-96 overflow-y-auto">
+                  <p className="text-gray-800 whitespace-pre-wrap leading-relaxed">
+                    {transcript}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Summary Card */}
+            {summary && (
+              <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl shadow-xl p-8 border border-purple-100">
+                <h3 className="text-2xl font-bold text-purple-900 mb-4 flex items-center gap-2">
+                  📋 Summary
+                </h3>
+                <div className="prose max-w-none">
+                  <p className="text-gray-800 whitespace-pre-wrap leading-relaxed">{summary}</p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Empty State */}
+        {!transcript && !summary && !isProcessing && (
+          <div className="bg-white rounded-2xl shadow-xl p-12 text-center">
+            <div className="text-6xl mb-4">🎤</div>
+            <h3 className="text-xl font-semibold text-gray-700 mb-2">
+              Ready to transcribe
+            </h3>
+            <p className="text-gray-500">
+              Start recording or upload an audio/video file to get started
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Export Modal */}
+      {showExportModal && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md transform transition-all">
+            <div className="px-6 py-5 border-b border-gray-100">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                    <Download className="w-5 h-5 text-green-600" />
+                  </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Meeting Title
-                    </label>
-                    <input
-                      type="text"
-                      value={meetingTitle}
-                      onChange={(e) => setMeetingTitle(e.target.value)}
-                      placeholder="e.g., Team Standup, Q4 Planning"
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
-                      onKeyPress={(e) => e.key === 'Enter' && handleStartRecording()}
-                    />
+                    <h2 className="text-xl font-semibold text-gray-900">Export Notes</h2>
+                    <p className="text-sm text-gray-500">Choose your preferred format</p>
                   </div>
-                  
-                  <button
-                    onClick={handleStartRecording}
-                    disabled={!isConnected}
-                    className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white font-semibold py-4 px-6 rounded-lg transition-colors flex items-center justify-center gap-2"
-                  >
-                    <Mic size={20} />
-                    Start Recording
-                  </button>
                 </div>
-              ) : (
-                // STOP RECORDING PANEL
-                <div className="space-y-6">
-                  <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                    <h3 className="font-semibold text-blue-800 mb-2">
-                      {currentSession?.title}
-                    </h3>
-                    <div className="flex gap-4 text-sm text-blue-600">
-                      <span>{currentSession?.total_words || 0} words</span>
-                      <span>Active</span>
-                    </div>
-                  </div>
-                  
-                  <button
-                    onClick={handleStopRecording}
-                    className="w-full bg-red-500 hover:bg-red-600 text-white font-semibold py-4 px-6 rounded-lg transition-colors flex items-center justify-center gap-2"
-                  >
-                    <Square size={20} />
-                    Stop Recording
-                  </button>
-                </div>
-              )}
-            </div>
-
-
-            {/* RECENT SESSIONS */}
-            <div className="bg-white rounded-xl shadow-lg p-6">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-semibold flex items-center gap-2">
-                  📚 Recent Sessions
-                </h2>
                 <button
-                  onClick={loadSessions}
-                  className="text-gray-500 hover:text-gray-700 p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                  onClick={() => setShowExportModal(false)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
                 >
-                  <RefreshCw size={16} />
+                  <X className="w-5 h-5" />
                 </button>
               </div>
+            </div>
 
+            <div className="px-6 py-6">
               <div className="space-y-3">
-                {sessions.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">
-                    <FileText size={48} className="mx-auto mb-2 text-gray-300" />
-                    <p>No sessions yet</p>
-                    <p className="text-sm">Start your first recording above</p>
-                  </div>
-                ) : (
-                  sessions.slice(0, 5).map((session) => (
-                    <div key={session.id} className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
-                      <div className="flex justify-between items-start mb-2">
-                        <h3 className="font-medium text-gray-800">{session.title}</h3>
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${
-                          session.status === 'active' 
-                            ? 'bg-green-100 text-green-700' 
-                            : 'bg-gray-100 text-gray-700'
-                        }`}>
-                          {session.status}
-                        </span>
-                      </div>
-                      
-                      <div className="flex gap-4 text-sm text-gray-600 mb-3">
-                        <span>{formatDate(session.start_time)}</span>
-                        <span>{session.total_words} words</span>
-                      </div>
-
-                      {session.key_points && session.key_points.length > 0 && (
-                        <div className="mb-3">
-                          <p className="text-sm font-medium text-gray-700 mb-1">Key Points:</p>
-                          <ul className="text-sm text-gray-600 space-y-1">
-                            {session.key_points.slice(0, 2).map((point, i) => (
-                              <li key={i} className="truncate">• {point}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                        {showExportModal && (
-  <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50">
-    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg w-80">
-      <h2 className="text-lg font-semibold mb-4 text-center">Export As</h2>
-
-      <div className="space-y-3">
-        <label className="flex items-center gap-2">
-          <input
-            type="radio"
-            name="format"
-            value="txt"
-            checked={selectedFormat === "txt"}
-            onChange={() => setSelectedFormat("txt")}
-          />
-          <span>Text (.txt)</span>
-        </label>
-        <label className="flex items-center gap-2">
-          <input
-            type="radio"
-            name="format"
-            value="pdf"
-            checked={selectedFormat === "pdf"}
-            onChange={() => setSelectedFormat("pdf")}
-          />
-          <span>PDF (.pdf)</span>
-        </label>
-        <label className="flex items-center gap-2">
-          <input
-            type="radio"
-            name="format"
-            value="docx"
-            checked={selectedFormat === "docx"}
-            onChange={() => setSelectedFormat("docx")}
-          />
-          <span>Word (.docx)</span>
-        </label>
-      </div>
-
-      <div className="flex justify-between mt-6">
-        <button
-          onClick={() => setShowExportModal(false)}
-          className="px-4 py-2 bg-gray-300 dark:bg-gray-700 rounded-md"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={() => handleExportSession()}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md"
-        >
-          Export
-        </button>
-      </div>
-    </div>
-  </div>
-)}
-
-                      <button   onClick={() => setShowExportModal(true)}className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer">
-                        <Download size={14} />
-                        Export Session
-                      </button>
+                <label className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedFormat === "txt" ? "border-green-500 bg-green-50 shadow-sm" : "border-gray-200 hover:border-green-300 hover:bg-gray-50"}`}>
+                  <input type="radio" name="format" value="txt" checked={selectedFormat === "txt"} onChange={() => setSelectedFormat("txt")} className="w-5 h-5 text-green-600 focus:ring-2 focus:ring-green-500" />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-5 h-5 text-gray-600" />
+                      <span className="font-medium text-gray-900">Plain Text (.txt)</span>
                     </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
+                    <p className="text-sm text-gray-500 mt-1">Simple format, works everywhere</p>
+                  </div>
+                  {selectedFormat === "txt" && <div className="w-6 h-6 bg-green-600 rounded-full flex items-center justify-center"><Check className="w-4 h-4 text-white" /></div>}
+                </label>
 
-          {/* SIDEBAR - STATS */}
-          <div className="space-y-8">
-            
-            {/* SYSTEM STATS */}
-            <div className="bg-white rounded-xl shadow-lg p-6">
-              <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
-                📊 Statistics
-              </h2>
-              
-              <div className="space-y-4">
-                <div className="bg-blue-50 p-4 rounded-lg">
-                  <div className="text-2xl font-bold text-blue-600">{stats.total_sessions}</div>
-                  <div className="text-sm text-blue-700">Total Sessions</div>
-                </div>
-                
-                <div className="bg-green-50 p-4 rounded-lg">
-                  <div className="text-2xl font-bold text-green-600">
-                    {stats.total_words.toLocaleString()}
+                <label className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedFormat === "pdf" ? "border-green-500 bg-green-50 shadow-sm" : "border-gray-200 hover:border-green-300 hover:bg-gray-50"}`}>
+                  <input type="radio" name="format" value="pdf" checked={selectedFormat === "pdf"} onChange={() => setSelectedFormat("pdf")} className="w-5 h-5 text-green-600 focus:ring-2 focus:ring-green-500" />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-5 h-5 text-red-500" />
+                      <span className="font-medium text-gray-900">PDF Document (.pdf)</span>
+                    </div>
+                    <p className="text-sm text-gray-500 mt-1">Professional format for sharing</p>
                   </div>
-                  <div className="text-sm text-green-700">Words Transcribed</div>
-                </div>
-                
-                <div className="bg-purple-50 p-4 rounded-lg">
-                  <div className="text-2xl font-bold text-purple-600">
-                    {Math.round(stats.avg_words_per_session || 0)}
+                  {selectedFormat === "pdf" && <div className="w-6 h-6 bg-green-600 rounded-full flex items-center justify-center"><Check className="w-4 h-4 text-white" /></div>}
+                </label>
+
+                <label className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedFormat === "docx" ? "border-green-500 bg-green-50 shadow-sm" : "border-gray-200 hover:border-green-300 hover:bg-gray-50"}`}>
+                  <input type="radio" name="format" value="docx" checked={selectedFormat === "docx"} onChange={() => setSelectedFormat("docx")} className="w-5 h-5 text-green-600 focus:ring-2 focus:ring-green-500" />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-5 h-5 text-blue-600" />
+                      <span className="font-medium text-gray-900">Word Document (.docx)</span>
+                    </div>
+                    <p className="text-sm text-gray-500 mt-1">Editable in Microsoft Word</p>
                   </div>
-                  <div className="text-sm text-purple-700">Avg Words/Session</div>
-                </div>
+                  {selectedFormat === "docx" && <div className="w-6 h-6 bg-green-600 rounded-full flex items-center justify-center"><Check className="w-4 h-4 text-white" /></div>}
+                </label>
               </div>
             </div>
 
-            {/* QUICK ACTIONS */}
-            <div className="bg-white rounded-xl shadow-lg p-6">
-              <h2 className="text-xl font-semibold mb-6">⚡ Quick Actions</h2>
-              
-              <div className="space-y-3">
-                <button 
-                  onClick={loadSessions}
-                  className="w-full text-left p-3 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-colors flex items-center gap-3"
-                >
-                  <RefreshCw size={16} className="text-gray-600" />
-                  <span>Refresh Data</span>
-                </button>
-                
-                <button className="w-full text-left p-3 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-colors flex items-center gap-3">
-                  <BarChart3 size={16} className="text-gray-600" />
-                  <span>View Analytics</span>
-                </button>
-                
-                <button className="w-full text-left p-3 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-colors flex items-center gap-3">
-                  <FileText size={16} className="text-gray-600" />
-                  <span>Export All Sessions</span>
-                </button>
-              </div>
+            <div className="px-6 py-4 bg-gray-50 rounded-b-2xl flex items-center justify-end gap-3">
+              <button onClick={() => setShowExportModal(false)} className="px-5 py-2.5 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors">Cancel</button>
+              <button onClick={handleDownload} className="px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-sm hover:shadow transition-all flex items-center gap-2">
+                <Download className="w-4 h-4" />
+                Download
+              </button>
             </div>
           </div>
         </div>
-      </div>
-      {isProcessing && (
-  <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-    <div className="bg-white p-6 rounded-lg shadow-lg text-center">
-      <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mx-auto mb-4"></div>
-      <p className="text-lg font-medium text-gray-800">Processing transcription...</p>
-      <p className="text-sm text-gray-500 mt-2">Please wait while we upload and transcribe your recording.</p>
-    </div>
-  </div>
-)}
-
+      )}
     </div>
   );
 }
-
