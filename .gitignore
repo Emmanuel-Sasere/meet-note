@@ -29,3 +29,13 @@ chore: (maintenance/setup)
 
 .vscode
                 
+ node_modules
+*.webm
+*.mp3
+*.wav
+*.mov
+*.mp4
+
+.env
+.env.local
+.env.*.local
