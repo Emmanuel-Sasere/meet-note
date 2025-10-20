@@ -25,10 +25,16 @@ export default function MeetNote() {
   const [showExportModal, setShowExportModal] = useState(false);
   const [selectedFormat, setSelectedFormat] = useState<'txt' | 'pdf' | 'docx'>('txt');
   const [processingStep, setProcessingStep] = useState('');
+  const [isMobile, setIsMobile] = useState(false);
+
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const API_URL = process.env.NEXT_PUBLIC_API_URL
+
+  useEffect(() => {
+  setIsMobile(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
+}, []);
 
   // Prevent refresh when there's data
   useEffect(() => {
@@ -63,17 +69,42 @@ export default function MeetNote() {
   // Start recording
   const handleStartRecording = async () => {
     try {
-      const displayStream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
-        audio: true,
-      });
+     
+      // declare streams in the outer scope so onstop can access them
+      let displayStream: MediaStream | null = null;
+      let micStream: MediaStream | null = null;
+      let combinedStream: MediaStream | null = null;
 
-      const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+       if (isMobile) {
+        alert("Screen recording is not supported on mobile. Only audio will be recorded.");
+        // Only use mic on mobile
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        combinedStream = micStream;
+      } else {
+        // Use screen + mic (desktop)
+        displayStream = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: true,
+        });
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-      const combinedStream = new MediaStream([
-        ...displayStream.getAudioTracks(),
-        ...micStream.getAudioTracks(),
-      ]);
+        combinedStream = new MediaStream([
+          ...displayStream.getAudioTracks(),
+          ...micStream.getAudioTracks(),
+        ]);
+      }
+if (!combinedStream) throw new Error("No media stream available");
+      // const displayStream = await navigator.mediaDevices.getDisplayMedia({
+      //   video: true,
+      //   audio: true,
+      // });
+
+      // const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      // const combinedStream = new MediaStream([
+      //   ...displayStream.getAudioTracks(),
+      //   ...micStream.getAudioTracks(),
+      // ]);
 
       const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
         ? "audio/webm;codecs=opus"
@@ -92,8 +123,8 @@ export default function MeetNote() {
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
         await uploadAndTranscribe(blob, 'audio');
         
-        displayStream.getTracks().forEach(track => track.stop());
-        micStream.getTracks().forEach(track => track.stop());
+        displayStream?.getTracks().forEach(track => track.stop());
+        micStream?.getTracks().forEach(track => track.stop());
       };
 
       recorder.start();
