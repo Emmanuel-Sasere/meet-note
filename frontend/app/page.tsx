@@ -28,6 +28,7 @@ export default function MeetNote() {
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
   // Prevent refresh when there's data
   useEffect(() => {
@@ -113,6 +114,7 @@ export default function MeetNote() {
       setIsRecording(false);
     }
   };
+  
 
   // Handle file upload (audio or video)
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -134,8 +136,9 @@ export default function MeetNote() {
       const formData = new FormData();
       formData.append("file", fileBlob, fileType === 'video' ? "video.mp4" : "audio.webm");
       formData.append("type", fileType);
+     
 
-      const response = await fetch("http://localhost:8080/transcribe", {
+      const response = await fetch(`${API_URL}/transcribe`, {
         method: "POST",
         body: formData,
       });
