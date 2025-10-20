@@ -295,7 +295,7 @@ const downloadAsPDF = (fileName: string) => {
   doc.setTextColor(107, 114, 128); // Gray
   doc.setFont('helvetica', 'normal');
   doc.text(
-    `Generated on: ${new Date().toLocaleString()} | Created with MeetNote`,
+    `Generated on: ${new Date().toLocaleString()} | Created with Noted`,
     pageWidth / 2,
     pageHeight - 15,
     { align: 'center' }
@@ -334,7 +334,7 @@ const downloadAsPDF = (fileName: string) => {
   
   <div class="footer">
     Generated on: ${new Date().toLocaleString()}<br>
-    Created with MeetNote
+    Created with Noted
   </div>
 </body>
 </html>`;
@@ -398,7 +398,7 @@ const downloadAsPDF = (fileName: string) => {
         <div className="bg-white rounded-2xl shadow-xl p-8 mb-8">
           <div className="text-center">
             <h1 className="text-4xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent mb-2">
-              🎙️ MeetNote
+              🎙️ Noted
             </h1>
             <p className="text-gray-600">
               Record or upload audio/video for instant transcription and summary

@@ -27,7 +27,7 @@ func RegisterRoutes() *mux.Router {
 
 	// Route 1: Health check
 	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, "Welcome to MeetNote API")
+		fmt.Fprintln(w, "Welcome to Noted API")
 	}).Methods("GET")
 
 	// Route 2: Upload and transcribe audio (handles both recording and file upload)
