@@ -14,9 +14,20 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Noted",
-  description: "Transcribe and summarize your meetings with ease.",
-};
+ title: 'Noted - Free AI Meeting Transcription & Summarization',
+  description: 'Record and transcribe meetings, lectures, and audio with AI. Free online tool for accurate speech-to-text conversion and automatic summarization.',
+  keywords: 'transcription, meeting notes, AI transcription, speech to text, audio transcription, video transcription, meeting summarization',
+  openGraph: {
+    title: 'Noted - AI Meeting Transcription',
+    description: 'Free AI-powered meeting transcription and summarization tool',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Noted - AI Transcription',
+    description: 'Free AI-powered meeting transcription',
+  },
+}
 
 export default function RootLayout({
   children,
@@ -24,10 +35,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+     <html lang="en" suppressHydrationWarning>
+   
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+      suppressHydrationWarning>
         {children}
         <Analytics />
       </body>
