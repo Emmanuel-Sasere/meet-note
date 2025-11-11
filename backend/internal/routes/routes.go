@@ -78,7 +78,9 @@ func handleTranscribe(w http.ResponseWriter, r *http.Request) {
 		fileType = "audio" // default
 	}
 
-	fmt.Printf("📁 Processing %s file: %s (size: %d bytes)\n", fileType, header.Filename, header.Size)
+	// fmt.Printf("📁 Processing %s file: %s (size: %d bytes)\n", fileType, header.Filename, header.Size)
+		fmt.Printf("📁 Processing %s file: %s (size: %.2f MB)\n", 
+		fileType, header.Filename, float64(header.Size)/(1024*1024))
 
 	// Create temp file in system temp directory
 	var tempFile *os.File
