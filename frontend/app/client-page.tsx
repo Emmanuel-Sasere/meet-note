@@ -47,7 +47,7 @@ const [transcribeProgress, setTranscribeProgress] = useState(0);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
-  const API_URL = process.env.NEXT_PUBLIC_API_URL_TEST
+  const API_URL = process.env.NEXT_PUBLIC_API_URL
 
 
 
