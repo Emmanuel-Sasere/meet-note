@@ -32,6 +32,12 @@ func RegisterRoutes() *mux.Router {
 
 	// Route 2: Upload and transcribe audio (handles both recording and file upload)
 	router.HandleFunc("/transcribe", handleTranscribe).Methods("POST")
+	 // Route 3: Explicitly handle the OPTIONS preflight for /transcribe
+    // The corsMiddleware will catch this and handle it correctly.
+    router.HandleFunc("/transcribe", func(w http.ResponseWriter, r *http.Request) {
+        // This handler function isn't strictly necessary as the middleware returns early, 
+        // but defining the method ensures mux routes the OPTIONS request correctly.
+    }).Methods("OPTIONS")
 
 	return router
 }
@@ -39,13 +45,19 @@ func RegisterRoutes() *mux.Router {
 // CORS middleware
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+			origin := r.Header.Get("Origin")
+
+		// Allow localhost and Render domain
+		if origin == "http://localhost:3000" || origin == "https://noted-note.vercel.app" {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
 
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
-			return
+			return // Crucial: Stop processing here for OPTIONS
 		}
 
 		next.ServeHTTP(w, r)
@@ -78,7 +90,9 @@ func handleTranscribe(w http.ResponseWriter, r *http.Request) {
 		fileType = "audio" // default
 	}
 
-	fmt.Printf("📁 Processing %s file: %s (size: %d bytes)\n", fileType, header.Filename, header.Size)
+	// fmt.Printf("📁 Processing %s file: %s (size: %d bytes)\n", fileType, header.Filename, header.Size)
+		fmt.Printf("📁 Processing %s file: %s (size: %.2f MB)\n", 
+		fileType, header.Filename, float64(header.Size)/(1024*1024))
 
 	// Create temp file in system temp directory
 	var tempFile *os.File
@@ -131,7 +145,7 @@ func handleTranscribe(w http.ResponseWriter, r *http.Request) {
 
 	// Step 1: Transcribe audio with Gemini
 	fmt.Println("🎤 Transcribing audio...")
-	transcript, err := summarization.TranscribeWithGemini(audioPath)
+	transcript, err := summarization.TranscribeWithFallback(audioPath)
 	if err != nil {
 		sendJSON(w, http.StatusInternalServerError, APIResponse{
 			Success: false,
@@ -140,16 +154,13 @@ func handleTranscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Step 2: Summarize the transcript with Gemini
-	fmt.Println("📝 Summarizing transcript...")
-	summary, err := summarization.SummarizeWithGemini(transcript)
-	if err != nil {
-		sendJSON(w, http.StatusInternalServerError, APIResponse{
-			Success: false,
-			Error:   fmt.Sprintf("Summarization failed: %v", err),
-		})
-		return
-	}
+	// Step 2: Summarize
+fmt.Println("📝 Summarizing transcript...")
+summary, err := summarization.SummarizeWithFallback(transcript)
+if err != nil {
+	fmt.Printf("⚠️ Summary failed: %v\n", err)
+	summary = "Summary unavailable."
+}
 
 	// Return both transcript and summary
 	sendJSON(w, http.StatusOK, APIResponse{

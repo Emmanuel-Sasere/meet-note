@@ -1,24 +1,34 @@
 package config
 
 import (
-	"log"
 	"os"
-
-	"github.com/joho/godotenv"
+	
 )
 
-func GetGeminiKey() string {
-	 err := godotenv.Load()
-  if err != nil {
-    log.Fatal("Error loading .env file")
-  }
 
-	
-	key := os.Getenv("GEMINI_API_KEY")
 
-	if key == "" {
-		log.Fatal("GEMINI_API_KEY environment variable is not set")
+
+type APIKeys struct {
+	Gemini     string
+	Groq       string
+
+}
+
+
+
+func GetAPIKeys() APIKeys {
+	return APIKeys{
+		Gemini:     os.Getenv("GEMINI_API_KEY"),
+		Groq:       os.Getenv("GROQ_API_KEY"),
+
 	}
-	return key
+}
+
+func GetGeminiKey() string {
+	return os.Getenv("GEMINI_API_KEY")
+}
+
+func GetGroqKey() string {
+	return os.Getenv("GROQ_API_KEY")
 }
 

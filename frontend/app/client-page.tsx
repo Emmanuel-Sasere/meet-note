@@ -14,6 +14,8 @@ import {
   Video
 } from 'lucide-react';
 import jsPDF from 'jspdf';
+import { handleError } from '@/util/utils/errorHandler';
+import ProgressGame from '@/components/ProgressGame';
 
   // ✅ Add this helper at top of component
 const checkIsMobile = () => {
@@ -35,6 +37,8 @@ export default function MeetNote() {
   const [mobileWarning, setMobileWarning] = useState(false);
    const [mounted, setMounted] = useState(false);
    const [isMobileDevice, setIsMobileDevice] = useState(false);
+   const [uploadProgress, setUploadProgress] = useState(0);
+const [transcribeProgress, setTranscribeProgress] = useState(0);
 
 
 
@@ -85,77 +89,113 @@ export default function MeetNote() {
   };
 
   // Start recording
-  const handleStartRecording = async () => {
-    try {
-       const isMobile = isMobileDevice;
-     
-      // declare streams in the outer scope so onstop can access them
-      let displayStream: MediaStream | null = null;
-      let micStream: MediaStream | null = null;
-      let combinedStream: MediaStream | null = null;
+const handleStartRecording = async () => {
+  try {
+    const isMobile = isMobileDevice;
+    let displayStream: MediaStream | null = null;
+    let micStream: MediaStream | null = null;
+    let combinedStream: MediaStream | null = null;
 
-       if (isMobile) {
+    if (isMobile) {
       setMobileWarning(true);
-        // Only use mic on mobile
-        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        combinedStream = micStream;
-      } else {
-        // Use screen + mic (desktop)
-        displayStream = await navigator.mediaDevices.getDisplayMedia({
-          video: true,
-          audio: true,
-        });
-        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-        combinedStream = new MediaStream([
-          ...displayStream.getAudioTracks(),
-          ...micStream.getAudioTracks(),
-        ]);
-      }
-if (!combinedStream) throw new Error("No media stream available");
-      // const displayStream = await navigator.mediaDevices.getDisplayMedia({
-      //   video: true,
-      //   audio: true,
-      // });
-
-      // const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-      // const combinedStream = new MediaStream([
-      //   ...displayStream.getAudioTracks(),
-      //   ...micStream.getAudioTracks(),
-      // ]);
-
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus"
-        : "audio/webm";
-
-      const recorder = new MediaRecorder(combinedStream, { mimeType });
-      chunksRef.current = [];
-
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          chunksRef.current.push(event.data);
-        }
-      };
-
-      recorder.onstop = async () => {
-        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-        await uploadAndTranscribe(blob, 'audio');
-        
-        displayStream?.getTracks().forEach(track => track.stop());
-        micStream?.getTracks().forEach(track => track.stop());
-      };
-
-      recorder.start();
-      mediaRecorderRef.current = recorder;
-      setIsRecording(true);
-      setRecordingTime(0);
-      setError('');
-    } catch (err) {
-      console.error("Error starting recording:", err);
-      setError("Could not start recording. Please allow permissions.");
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      combinedStream = micStream;
+    } else {
+      displayStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: true,
+      });
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      combinedStream = new MediaStream([
+        ...displayStream.getAudioTracks(),
+        ...micStream.getAudioTracks(),
+      ]);
     }
-  };
+
+    if (!combinedStream) throw new Error("No media stream available");
+
+    const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+      ? "audio/webm;codecs=opus"
+      : "audio/webm";
+
+    // Compress audio: 128kbps
+    const recorder = new MediaRecorder(combinedStream, { 
+      mimeType,
+      audioBitsPerSecond: 128000
+    });
+    
+    chunksRef.current = [];
+
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        chunksRef.current.push(event.data);
+      }
+    };
+
+    recorder.onstop = async () => {
+      const blob = new Blob(chunksRef.current, { type: mimeType });
+      
+      // Save immediately
+      downloadAudioFile(blob);
+      
+      // Then transcribe
+      await uploadAndTranscribe(blob, 'audio');
+      
+      displayStream?.getTracks().forEach(track => track.stop());
+      micStream?.getTracks().forEach(track => track.stop());
+    };
+
+    recorder.start();
+    mediaRecorderRef.current = recorder;
+    setIsRecording(true);
+    setRecordingTime(0);
+    setError('');
+  } catch (err) {
+   handleError(err,setError,"Start Recording");
+  }
+};
+
+// Download audio immediately
+const downloadAudioFile = (blob: Blob) => {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `recording-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.webm`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  console.log('✅ Audio saved to downloads');
+};
+
+// Upload with real progress tracking
+
+
+// Trigger download immediately
+const saveAudioToDownloads = (blob: Blob) => {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `recording-${new Date().toISOString()}.webm`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
+
+// Save backup to browser storage
+const saveAudioBackup = (blob: Blob) => {
+  try {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      localStorage.setItem('audio_backup', reader.result as string);
+      localStorage.setItem('audio_backup_time', Date.now().toString());
+    };
+    reader.readAsDataURL(blob);
+  } catch (err) {
+    handleError(err, setError, "Backup Audio");
+  }
+};
 
   // Stop recording
   const handleStopRecording = () => {
@@ -171,46 +211,69 @@ if (!combinedStream) throw new Error("No media stream available");
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const fileType = file.type.startsWith('video/') ? 'video' : 'audio';
+    // Determine file type from MIME type
+  const fileType = file.type.startsWith('video/') ? 'video' : 'audio';
     await uploadAndTranscribe(file, fileType);
+
     event.target.value = '';
   };
 
   // Upload and transcribe audio/video
-  const uploadAndTranscribe = async (fileBlob: Blob, fileType: 'audio' | 'video') => {
-    setIsProcessing(true);
-    setError('');
-    setProcessingStep(fileType === 'video' ? 'Extracting audio from video...' : 'Uploading audio...');
+ const uploadAndTranscribe = async (fileBlob: Blob, fileType: 'audio' | 'video') => {
+  setIsProcessing(true);
+  setError('');
+  setUploadProgress(0);
+  setTranscribeProgress(0);
+  setProcessingStep('Uploading audio...');
 
-    try {
-      const formData = new FormData();
-      formData.append("file", fileBlob, fileType === 'video' ? "video.mp4" : "audio.webm");
-      formData.append("type", fileType);
-     
+  try {
+    const formData = new FormData();
+    formData.append("file", fileBlob, fileType === 'video' ? "video.mp4" : "audio.webm");
+    formData.append("type", fileType);
 
-      const response = await fetch(`${API_URL}/transcribe`, {
-        method: "POST",
-        body: formData,
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        setTranscript(result.data.transcript);
-        setSummary(result.data.summary);
-        setProcessingStep('');
-      } else {
-        setError(result.error || "Processing failed");
-        setProcessingStep('');
+    // Track upload progress
+    const xhr = new XMLHttpRequest();
+    
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        const percentComplete = (e.loaded / e.total) * 100;
+        setUploadProgress(Math.round(percentComplete));
       }
-    } catch (err) {
-      console.error("Upload error:", err);
-      setError("Failed to upload or process file. Make sure the server is running.");
-      setProcessingStep('');
-    } finally {
+    };
+
+    xhr.onload = async () => {
+      if (xhr.status === 200) {
+        setUploadProgress(100);
+        setProcessingStep('Transcribing with AI...');
+        
+        const result = JSON.parse(xhr.responseText);
+        
+        if (result.success) {
+          setTranscript(result.data.transcript);
+          setSummary(result.data.summary);
+          setProcessingStep('Complete!');
+        } else {
+          setError(result.error || "Processing failed");
+        }
+      } else {
+        setError("Upload failed");
+      }
       setIsProcessing(false);
-    }
-  };
+    };
+
+    xhr.onerror = () => {
+       handleError(new Error("Network error"), setError, "File Upload");
+      setIsProcessing(false);
+    };
+
+    xhr.open("POST", `${API_URL}/transcribe`, true);
+    xhr.send(formData);
+
+  } catch (err) {
+      handleError(err, setError, "File Upload / Transcribe");
+    setIsProcessing(false);
+  }
+};
 
   // Download transcript and summary in selected format
   const handleDownload = () => {
@@ -377,7 +440,7 @@ const downloadAsPDF = (fileName: string) => {
   </style>
 </head>
 <body>
-  <h1>📋 Notes</h1>
+  <h1>&#128203 Notes</h1>
   
   <h2>Transcript</h2>
   <div class="notes">${transcript.replace(/\n/g, '<br>')}</div>
@@ -559,17 +622,15 @@ const downloadAsPDF = (fileName: string) => {
         </div>
 
         {/* Processing Indicator */}
-        {isProcessing && (
-          <div className="bg-white rounded-2xl shadow-xl p-8 mb-8">
-            <div className="flex flex-col items-center justify-center gap-4">
-              <div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
-              <p className="text-lg font-medium text-gray-700">
-                {processingStep || 'Processing your file...'}
-              </p>
-              <p className="text-sm text-gray-500">This may take a minute depending on file length</p>
-            </div>
-          </div>
-        )}
+  {isProcessing && (
+  <ProgressGame
+    isProcessing={isProcessing}
+    onComplete={() => {
+      setIsProcessing(false);
+      
+    }}
+  />
+)}
 
         {/* Results Section */}
         {(transcript || summary) && !isProcessing && (
