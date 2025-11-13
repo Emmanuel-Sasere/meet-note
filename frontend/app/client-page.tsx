@@ -14,6 +14,8 @@ import {
   Video
 } from 'lucide-react';
 import jsPDF from 'jspdf';
+import { handleError } from '@/util/utils/errorHandler';
+import ProgressGame from '@/components/ProgressGame';
 
   // ✅ Add this helper at top of component
 const checkIsMobile = () => {
@@ -45,7 +47,7 @@ const [transcribeProgress, setTranscribeProgress] = useState(0);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
-  const API_URL = process.env.NEXT_PUBLIC_API_URL
+  const API_URL = process.env.NEXT_PUBLIC_API_URL_TEST
 
 
 
@@ -149,8 +151,7 @@ const handleStartRecording = async () => {
     setRecordingTime(0);
     setError('');
   } catch (err) {
-    console.error("Error starting recording:", err);
-    setError("Could not start recording. Please allow permissions.");
+   handleError(err,setError,"Start Recording");
   }
 };
 
@@ -192,7 +193,7 @@ const saveAudioBackup = (blob: Blob) => {
     };
     reader.readAsDataURL(blob);
   } catch (err) {
-    console.log('Backup failed (storage full)');
+    handleError(err, setError, "Backup Audio");
   }
 };
 
@@ -261,7 +262,7 @@ const saveAudioBackup = (blob: Blob) => {
     };
 
     xhr.onerror = () => {
-      setError("Network error. Check if server is running.");
+       handleError(new Error("Network error"), setError, "File Upload");
       setIsProcessing(false);
     };
 
@@ -269,8 +270,7 @@ const saveAudioBackup = (blob: Blob) => {
     xhr.send(formData);
 
   } catch (err) {
-    console.error("Upload error:", err);
-    setError("Failed to upload. Make sure the server is running.");
+      handleError(err, setError, "File Upload / Transcribe");
     setIsProcessing(false);
   }
 };
@@ -440,7 +440,7 @@ const downloadAsPDF = (fileName: string) => {
   </style>
 </head>
 <body>
-  <h1>📋 Notes</h1>
+  <h1>&#128203 Notes</h1>
   
   <h2>Transcript</h2>
   <div class="notes">${transcript.replace(/\n/g, '<br>')}</div>
@@ -622,41 +622,14 @@ const downloadAsPDF = (fileName: string) => {
         </div>
 
         {/* Processing Indicator */}
-      {isProcessing && (
-  <div className="bg-white rounded-2xl shadow-xl p-8 mb-8">
-    <div className="flex flex-col items-center gap-4">
-      {/* Upload Progress */}
-      {uploadProgress < 100 && (
-        <>
-          <div className="w-full max-w-md">
-            <div className="flex justify-between text-sm text-gray-600 mb-2">
-              <span>Uploading</span>
-              <span>{uploadProgress}%</span>
-            </div>
-            <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-300"
-                style={{ width: `${uploadProgress}%` }}
-              />
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Processing Spinner */}
-      {uploadProgress === 100 && (
-        <>
-          <div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
-          <p className="text-lg font-medium text-gray-700">
-            {processingStep}
-          </p>
-          <p className="text-sm text-gray-500">
-            This may take 1-5 minutes depending on audio length
-          </p>
-        </>
-      )}
-    </div>
-  </div>
+  {isProcessing && (
+  <ProgressGame
+    isProcessing={isProcessing}
+    onComplete={() => {
+      setIsProcessing(false);
+      
+    }}
+  />
 )}
 
         {/* Results Section */}
