@@ -11,7 +11,8 @@ import {
   AlertCircle,
   X,
   Check,
-  Video
+  Video,
+  MessageSquareHeart
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import { handleError } from '@/util/utils/errorHandler';
@@ -39,6 +40,8 @@ export default function MeetNote() {
    const [isMobileDevice, setIsMobileDevice] = useState(false);
    const [uploadProgress, setUploadProgress] = useState(0);
 const [transcribeProgress, setTranscribeProgress] = useState(0);
+const [showFeedbackForm, setShowFeedbackForm] = useState(false);
+const [showFeedbackPopup, setShowFeedbackPopup] = useState(false);
 
 
 
@@ -56,6 +59,12 @@ const [transcribeProgress, setTranscribeProgress] = useState(0);
     useEffect(() => {
     setMounted(true);
     setIsMobileDevice(checkIsMobile());
+      // Show popup only on FIRST visit
+  const hasSeenPopup = localStorage.getItem("seen_feedback_popup");
+  if (!hasSeenPopup) {
+    setTimeout(() => setShowFeedbackPopup(true), 1500);
+    localStorage.setItem("seen_feedback_popup", "true");
+  }
   }, []);
 
   // Prevent refresh when there's data
@@ -770,6 +779,67 @@ const downloadAsPDF = (fileName: string) => {
           </div>
         </div>
       )}
+      {/* Floating Feedback Button */}
+<button
+  onClick={() => setShowFeedbackForm(true)}
+  className="fixed bottom-6 right-6 bg-purple-600 hover:bg-purple-700 text-white w-14 h-14 rounded-full shadow-xl flex items-center justify-center text-3xl z-50"
+>
+  <MessageSquareHeart />
+</button>
+{/* Feedback Form Modal */}
+{showFeedbackForm && (
+  <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl h-[80vh] overflow-hidden relative">
+      
+      {/* Close button */}
+      <button
+        onClick={() => setShowFeedbackForm(false)}
+        className="absolute top-3 right-3 text-gray-500 hover:text-gray-800"
+      >
+        <X className="w-6 h-6" />
+      </button>
+
+      <h2 className="text-xl font-semibold text-center py-4 border-b text-gray-800">
+        We Value Your Feedback 💜
+      </h2>
+
+      {/* Embedded Google Form */}
+      <iframe
+        src="https://forms.gle/3b83dZxuJ36kcdMeA"
+        className="w-full h-full border-0"
+      ></iframe>
+    </div>
+  </div>
+)}
+{/* First-Time Popup */}
+{showFeedbackPopup && (
+  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl text-center">
+      <h3 className="text-lg font-semibold mb-3 text-black">Help Us Improve 🙏</h3>
+      <p className="text-gray-800 mb-5">
+        We would love to know what you think about this app.
+      </p>
+
+      <button
+        className="w-full bg-purple-600 text-white py-3 rounded-xl mb-3"
+        onClick={() => {
+          setShowFeedbackPopup(false);
+          setShowFeedbackForm(true);
+        }}
+      >
+        Give Feedback
+      </button>
+
+      <button
+        className="w-full bg-gray-200 text-gray-700 py-3 rounded-xl"
+        onClick={() => setShowFeedbackPopup(false)}
+      >
+        Not Now
+      </button>
+    </div>
+  </div>
+)}
+
     </div>
   
   );
